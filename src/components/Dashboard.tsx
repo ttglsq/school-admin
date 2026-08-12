@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { GraduationCap, Users, School, LayoutDashboard, LogOut, Menu, Building2, KeyRound, UserCog } from 'lucide-react';
+import { GraduationCap, Users, School, LayoutDashboard, LogOut, Menu, Building2, KeyRound, UserCog, Coins } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
 import { Card, CardContent } from '@/components/ui/card';
@@ -9,11 +9,12 @@ import ClassManagement from './ClassManagement';
 import StudentManagement from './StudentManagement';
 import CampusManagement from './CampusManagement';
 import AccountManagement from './AccountManagement';
+import SalaryStandardPage from './SalaryStandardPage';
 import AccountSettingsDialog from './AccountSettingsDialog';
-import type { Teacher, ClassInfo, Student, Campus, Account, PermissionId } from '@/types';
+import type { Teacher, ClassInfo, Student, Campus, Account, PermissionId, SalaryStandardData, SalaryCoefficientKey, SalaryStandardRow } from '@/types';
 import { TEACHER_LEVELS, CLASS_LEVELS, ROLE_LABELS } from '@/types';
 
-export type PageId = 'overview' | 'campuses' | 'teachers' | 'classes' | 'students' | 'accounts';
+export type PageId = 'overview' | 'campuses' | 'teachers' | 'classes' | 'students' | 'accounts' | 'salary';
 
 interface DashboardProps {
   teachers: Teacher[];
@@ -45,6 +46,10 @@ interface DashboardProps {
   onAddCampus: (data: Omit<Campus, 'id' | 'createdAt'>) => void;
   onUpdateCampus: (id: string, data: Partial<Omit<Campus, 'id' | 'createdAt'>>) => void;
   onDeleteCampus: (id: string) => void;
+  // 听力系数操作
+  salaryStandard: SalaryStandardData;
+  onUpdateSalaryStandard: (key: SalaryCoefficientKey, rows: SalaryStandardRow[]) => void;
+  onResetSalaryStandard: (key: SalaryCoefficientKey) => void;
 }
 
 interface NavItem {
@@ -59,6 +64,7 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { id: 'teachers', label: '老师管理', icon: GraduationCap },
   { id: 'classes', label: '班级管理', icon: School },
   { id: 'students', label: '学生管理', icon: Users },
+  { id: 'salary', label: '听力系数', icon: Coins },
   { id: 'accounts', label: '账号管理', icon: UserCog },
 ];
 
@@ -202,6 +208,14 @@ export default function Dashboard(props: DashboardProps) {
             onAdd={props.onAddStudent}
             onUpdate={props.onUpdateStudent}
             onDelete={props.onDeleteStudent}
+          />
+        );
+      case 'salary':
+        return (
+          <SalaryStandardPage
+            data={props.salaryStandard}
+            onUpdate={props.onUpdateSalaryStandard}
+            onReset={props.onResetSalaryStandard}
           />
         );
       default:
@@ -476,6 +490,11 @@ function OverviewPage(
             {canAccess('students') && (
               <Button onClick={() => onNavigate('students')} variant="outline" className="gap-2">
                 <Users className="w-4 h-4" /> 管理学生
+              </Button>
+            )}
+            {canAccess('salary') && (
+              <Button onClick={() => onNavigate('salary')} variant="outline" className="gap-2">
+                <Coins className="w-4 h-4" /> 听力系数
               </Button>
             )}
           </div>

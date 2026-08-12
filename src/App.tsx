@@ -34,6 +34,9 @@ export default function App() {
           onAddCampus={store.addCampus}
           onUpdateCampus={store.updateCampus}
           onDeleteCampus={store.deleteCampus}
+          salaryStandard={store.salaryStandard}
+          onUpdateSalaryStandard={store.updateSalaryStandard}
+          onResetSalaryStandard={store.resetSalaryStandard}
         />
       ) : (
         <LoginPage accounts={store.accounts} onLogin={store.login} />

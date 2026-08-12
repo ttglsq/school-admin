@@ -48,6 +48,7 @@ export const PERMISSION_MODULES = [
   { id: 'teachers', label: '老师管理' },
   { id: 'classes', label: '班级管理' },
   { id: 'students', label: '学生管理' },
+  { id: 'salary', label: '听力系数' },
 ] as const;
 
 export type PermissionId = (typeof PERMISSION_MODULES)[number]['id'];
@@ -71,6 +72,26 @@ export interface Account {
   permissions: PermissionId[];
   createdAt: string;
 }
+
+// ===== 听力系数表（听力数据薪资）=====
+
+/** 单个档位：x 分钟/周 → y 元/周/人 */
+export interface SalaryStandardRow {
+  x: number;
+  y: number;
+}
+
+/** 薪资系数对应的老师等级 */
+export const SALARY_LEVELS = [
+  { key: '0.38', coefficient: 0.38, level: 'A', levelLabel: 'A级', levelDesc: '高级' },
+  { key: '0.35', coefficient: 0.35, level: 'B', levelLabel: 'B级', levelDesc: '中级' },
+  { key: '0.3', coefficient: 0.3, level: 'C', levelLabel: 'C级', levelDesc: '初级' },
+] as const;
+
+export type SalaryCoefficientKey = (typeof SALARY_LEVELS)[number]['key'];
+
+/** 三个系数对应的完整薪资表 */
+export type SalaryStandardData = Record<SalaryCoefficientKey, SalaryStandardRow[]>;
 
 // 老师等级配置
 export const TEACHER_LEVELS: Record<TeacherLevel, { label: string; color: string }> = {

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Teacher, ClassInfo, Student, Campus, Account, PermissionId } from '@/types';
+import type { Teacher, ClassInfo, Student, Campus, Account, PermissionId, SalaryStandardData, SalaryCoefficientKey } from '@/types';
 import { generateId, ALL_PERMISSIONS } from '@/types';
+import { SEED_SALARY_STANDARD } from '@/data/salarySeed';
 
 const STORAGE_KEYS = {
   teachers: 'school_teachers',
@@ -9,6 +10,7 @@ const STORAGE_KEYS = {
   campuses: 'school_campuses',
   accounts: 'school_accounts',
   currentUser: 'school_current_user',
+  salaryStandard: 'school_salary_standard',
   // 旧版本单账号存储，仅用于数据迁移
   legacyAccount: 'school_account',
   legacyAuth: 'school_auth',
@@ -110,6 +112,7 @@ export function useStore() {
   });
   const [students, setStudents] = useState<Student[]>(() => loadFromStorage(STORAGE_KEYS.students, seedStudents));
   const [accounts, setAccounts] = useState<Account[]>(() => loadAccounts());
+  const [salaryStandard, setSalaryStandard] = useState<SalaryStandardData>(() => loadFromStorage(STORAGE_KEYS.salaryStandard, SEED_SALARY_STANDARD));
   const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
     const id = localStorage.getItem(STORAGE_KEYS.currentUser);
     return id || null;
@@ -121,6 +124,7 @@ export function useStore() {
   useEffect(() => { saveToStorage(STORAGE_KEYS.classes, classes); }, [classes]);
   useEffect(() => { saveToStorage(STORAGE_KEYS.students, students); }, [students]);
   useEffect(() => { saveToStorage(STORAGE_KEYS.accounts, accounts); }, [accounts]);
+  useEffect(() => { saveToStorage(STORAGE_KEYS.salaryStandard, salaryStandard); }, [salaryStandard]);
 
   // 老师操作
   const addTeacher = useCallback((data: Omit<Teacher, 'id' | 'createdAt'>) => {
@@ -234,13 +238,26 @@ export function useStore() {
     return accounts.some(a => a.username === username && a.id !== excludeId);
   }, [accounts]);
 
+  // ===== 听力系数操作 =====
+
+  // 更新某个系数表的全部档位
+  const updateSalaryStandard = useCallback((key: SalaryCoefficientKey, rows: SalaryStandardData[SalaryCoefficientKey]) => {
+    setSalaryStandard(prev => ({ ...prev, [key]: rows }));
+  }, []);
+
+  // 恢复指定系数表为初始值
+  const resetSalaryStandard = useCallback((key: SalaryCoefficientKey) => {
+    setSalaryStandard(prev => ({ ...prev, [key]: SEED_SALARY_STANDARD[key].map(r => ({ ...r })) }));
+  }, []);
+
   return {
-    teachers, classes, students, campuses, accounts, currentUser,
+    teachers, classes, students, campuses, accounts, currentUser, salaryStandard,
     addTeacher, updateTeacher, deleteTeacher,
     addClass, updateClass, deleteClass,
     addStudent, updateStudent, deleteStudent,
     addCampus, updateCampus, deleteCampus,
     addAccount, updateAccount, deleteAccount, updateOwnAccount, isUsernameTaken,
+    updateSalaryStandard, resetSalaryStandard,
     isLoggedIn, login, logout,
   };
 }
