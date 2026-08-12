@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { GraduationCap, Users, School, LayoutDashboard, LogOut, Menu, Building2 } from 'lucide-react';
+import { GraduationCap, Users, School, LayoutDashboard, LogOut, Menu, Building2, KeyRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
 import { Card, CardContent } from '@/components/ui/card';
@@ -8,7 +8,9 @@ import TeacherManagement from './TeacherManagement';
 import ClassManagement from './ClassManagement';
 import StudentManagement from './StudentManagement';
 import CampusManagement from './CampusManagement';
+import AccountSettingsDialog from './AccountSettingsDialog';
 import type { Teacher, ClassInfo, Student, Campus } from '@/types';
+import type { AccountInfo } from '@/hooks/useStore';
 import { TEACHER_LEVELS, CLASS_LEVELS } from '@/types';
 
 export type PageId = 'overview' | 'teachers' | 'classes' | 'students' | 'campuses';
@@ -18,7 +20,9 @@ interface DashboardProps {
   classes: ClassInfo[];
   students: Student[];
   campuses: Campus[];
+  account: AccountInfo;
   onLogout: () => void;
+  onUpdateAccount: (username: string, password: string) => void;
   // 老师操作
   onAddTeacher: (data: Omit<Teacher, 'id' | 'createdAt'>) => void;
   onUpdateTeacher: (id: string, data: Partial<Omit<Teacher, 'id' | 'createdAt'>>) => void;
@@ -48,6 +52,7 @@ const navItems = [
 export default function Dashboard(props: DashboardProps) {
   const [currentPage, setCurrentPage] = useState<PageId>('overview');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
 
   const currentLabel = navItems.find(n => n.id === currentPage)?.label || '';
 
@@ -191,13 +196,30 @@ export default function Dashboard(props: DashboardProps) {
           <div className="flex items-center gap-2 shrink-0">
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted">
               <div className="w-2 h-2 rounded-full bg-green-500" />
-              <span className="text-sm text-muted-foreground">管理员</span>
+              <span className="text-sm text-muted-foreground">{props.account.username}</span>
             </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setAccountOpen(true)}
+              title="修改账号密码"
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <KeyRound className="w-5 h-5" />
+            </Button>
             <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-sm font-semibold shrink-0">
-              A
+              {props.account.username.charAt(0).toUpperCase()}
             </div>
           </div>
         </header>
+
+        {/* 修改账号密码 */}
+        <AccountSettingsDialog
+          open={accountOpen}
+          onOpenChange={setAccountOpen}
+          account={props.account}
+          onUpdate={props.onUpdateAccount}
+        />
 
         {/* Page Content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6">

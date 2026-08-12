@@ -14,7 +14,9 @@ export default function App() {
           classes={store.classes}
           students={store.students}
           campuses={store.campuses}
+          account={store.account}
           onLogout={store.logout}
+          onUpdateAccount={store.updateAccount}
           onAddTeacher={store.addTeacher}
           onUpdateTeacher={store.updateTeacher}
           onDeleteTeacher={store.deleteTeacher}
@@ -29,7 +31,7 @@ export default function App() {
           onDeleteCampus={store.deleteCampus}
         />
       ) : (
-        <LoginPage onLogin={store.login} />
+        <LoginPage account={store.account} onLogin={store.login} />
       )}
       <Toaster richColors position="top-center" />
     </>

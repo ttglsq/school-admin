@@ -8,7 +8,16 @@ const STORAGE_KEYS = {
   students: 'school_students',
   campuses: 'school_campuses',
   auth: 'school_auth',
+  account: 'school_account',
 };
+
+// 账号信息（可修改）
+export interface AccountInfo {
+  username: string;
+  password: string;
+}
+
+const DEFAULT_ACCOUNT: AccountInfo = { username: 'admin', password: 'admin123' };
 
 // 初始种子数据
 const seedTeachers: Teacher[] = [
@@ -61,12 +70,14 @@ export function useStore() {
     return stored.map(c => (c.campusId === undefined ? { ...c, campusId: '' } : c));
   });
   const [students, setStudents] = useState<Student[]>(() => loadFromStorage(STORAGE_KEYS.students, seedStudents));
+  const [account, setAccount] = useState<AccountInfo>(() => loadFromStorage(STORAGE_KEYS.account, DEFAULT_ACCOUNT));
 
   // 持久化
   useEffect(() => { saveToStorage(STORAGE_KEYS.teachers, teachers); }, [teachers]);
   useEffect(() => { saveToStorage(STORAGE_KEYS.campuses, campuses); }, [campuses]);
   useEffect(() => { saveToStorage(STORAGE_KEYS.classes, classes); }, [classes]);
   useEffect(() => { saveToStorage(STORAGE_KEYS.students, students); }, [students]);
+  useEffect(() => { saveToStorage(STORAGE_KEYS.account, account); }, [account]);
 
   // 老师操作
   const addTeacher = useCallback((data: Omit<Teacher, 'id' | 'createdAt'>) => {
@@ -141,12 +152,18 @@ export function useStore() {
     setAuthed(false);
   }, []);
 
+  // 账号管理
+  const updateAccount = useCallback((username: string, password: string) => {
+    setAccount({ username, password });
+  }, []);
+
   return {
-    teachers, classes, students, campuses,
+    teachers, classes, students, campuses, account,
     addTeacher, updateTeacher, deleteTeacher,
     addClass, updateClass, deleteClass,
     addStudent, updateStudent, deleteStudent,
     addCampus, updateCampus, deleteCampus,
+    updateAccount,
     isLoggedIn: authed, login, logout,
   };
 }
