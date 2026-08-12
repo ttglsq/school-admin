@@ -39,6 +39,39 @@ export interface Student {
   createdAt: string;
 }
 
+// ===== 账号与权限 =====
+
+// 可授权的页面板块（导航模块）
+export const PERMISSION_MODULES = [
+  { id: 'overview', label: '首页概览' },
+  { id: 'campuses', label: '校区管理' },
+  { id: 'teachers', label: '老师管理' },
+  { id: 'classes', label: '班级管理' },
+  { id: 'students', label: '学生管理' },
+] as const;
+
+export type PermissionId = (typeof PERMISSION_MODULES)[number]['id'];
+
+export const ALL_PERMISSIONS: PermissionId[] = PERMISSION_MODULES.map(m => m.id);
+
+// 账号角色
+export type UserRole = 'admin' | 'sub';
+
+export const ROLE_LABELS: Record<UserRole, string> = {
+  admin: '管理员',
+  sub: '子账号',
+};
+
+export interface Account {
+  id: string;
+  username: string;
+  password: string;
+  role: UserRole;
+  /** 子账号可访问的板块；管理员始终拥有全部板块 */
+  permissions: PermissionId[];
+  createdAt: string;
+}
+
 // 老师等级配置
 export const TEACHER_LEVELS: Record<TeacherLevel, { label: string; color: string }> = {
   A: { label: 'A级', color: 'bg-red-100 text-red-700 border-red-200' },

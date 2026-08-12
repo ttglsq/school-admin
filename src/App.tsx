@@ -8,15 +8,20 @@ export default function App() {
 
   return (
     <>
-      {store.isLoggedIn ? (
+      {store.isLoggedIn && store.currentUser ? (
         <Dashboard
           teachers={store.teachers}
           classes={store.classes}
           students={store.students}
           campuses={store.campuses}
-          account={store.account}
+          accounts={store.accounts}
+          currentUser={store.currentUser}
           onLogout={store.logout}
+          onAddAccount={store.addAccount}
           onUpdateAccount={store.updateAccount}
+          onDeleteAccount={store.deleteAccount}
+          onUpdateOwnAccount={store.updateOwnAccount}
+          isUsernameTaken={store.isUsernameTaken}
           onAddTeacher={store.addTeacher}
           onUpdateTeacher={store.updateTeacher}
           onDeleteTeacher={store.deleteTeacher}
@@ -31,7 +36,7 @@ export default function App() {
           onDeleteCampus={store.deleteCampus}
         />
       ) : (
-        <LoginPage account={store.account} onLogin={store.login} />
+        <LoginPage accounts={store.accounts} onLogin={store.login} />
       )}
       <Toaster richColors position="top-center" />
     </>

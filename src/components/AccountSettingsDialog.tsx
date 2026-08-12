@@ -7,16 +7,19 @@ import { Label } from '@/components/ui/label';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
-import type { AccountInfo } from '@/hooks/useStore';
+import type { Account } from '@/types';
 
 interface AccountSettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  account: AccountInfo;
+  /** 当前登录账号 */
+  account: Account;
   onUpdate: (username: string, password: string) => void;
+  /** 判断用户名是否已被其他账号占用 */
+  isUsernameTaken: (username: string, excludeId?: string) => boolean;
 }
 
-export default function AccountSettingsDialog({ open, onOpenChange, account, onUpdate }: AccountSettingsDialogProps) {
+export default function AccountSettingsDialog({ open, onOpenChange, account, onUpdate, isUsernameTaken }: AccountSettingsDialogProps) {
   const [username, setUsername] = useState('');
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -38,6 +41,7 @@ export default function AccountSettingsDialog({ open, onOpenChange, account, onU
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim()) { toast.error('请输入账号名'); return; }
+    if (isUsernameTaken(username.trim(), account.id)) { toast.error('该账号名已被使用'); return; }
     if (!oldPassword) { toast.error('请输入当前密码'); return; }
     if (oldPassword !== account.password) { toast.error('当前密码不正确'); return; }
     if (!newPassword) { toast.error('请输入新密码'); return; }
@@ -84,9 +88,9 @@ export default function AccountSettingsDialog({ open, onOpenChange, account, onU
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <KeyRound className="w-5 h-5 text-blue-600" />
-            修改账号密码
+            修改我的账号密码
           </DialogTitle>
-          <DialogDescription>修改登录账号名和密码，修改后下次登录请使用新信息</DialogDescription>
+          <DialogDescription>修改当前账号的登录名和密码，修改后下次登录请使用新信息</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
           <div className="space-y-2">

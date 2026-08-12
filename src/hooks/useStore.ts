@@ -1,23 +1,62 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Teacher, ClassInfo, Student, Campus } from '@/types';
-import { generateId } from '@/types';
+import type { Teacher, ClassInfo, Student, Campus, Account, PermissionId } from '@/types';
+import { generateId, ALL_PERMISSIONS } from '@/types';
 
 const STORAGE_KEYS = {
   teachers: 'school_teachers',
   classes: 'school_classes',
   students: 'school_students',
   campuses: 'school_campuses',
-  auth: 'school_auth',
-  account: 'school_account',
+  accounts: 'school_accounts',
+  currentUser: 'school_current_user',
+  // 旧版本单账号存储，仅用于数据迁移
+  legacyAccount: 'school_account',
+  legacyAuth: 'school_auth',
 };
 
-// 账号信息（可修改）
-export interface AccountInfo {
-  username: string;
-  password: string;
-}
+// 默认管理员账号
+const DEFAULT_ADMIN: Account = {
+  id: 'admin',
+  username: 'admin',
+  password: 'admin123',
+  role: 'admin',
+  permissions: [...ALL_PERMISSIONS],
+  createdAt: '2024-01-01T00:00:00Z',
+};
 
-const DEFAULT_ACCOUNT: AccountInfo = { username: 'admin', password: 'admin123' };
+// 加载账号列表（兼容旧版单账号数据）
+function loadAccounts(): Account[] {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEYS.accounts);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {
+    // ignore
+  }
+  // 旧版：单个可修改账号 -> 迁移为管理员
+  try {
+    const old = localStorage.getItem(STORAGE_KEYS.legacyAccount);
+    if (old) {
+      const { username, password } = JSON.parse(old);
+      const admin: Account = {
+        id: 'admin',
+        username: username || 'admin',
+        password: password || 'admin123',
+        role: 'admin',
+        permissions: [...ALL_PERMISSIONS],
+        createdAt: '2024-01-01T00:00:00Z',
+      };
+      localStorage.removeItem(STORAGE_KEYS.legacyAccount);
+      localStorage.removeItem(STORAGE_KEYS.legacyAuth);
+      return [admin];
+    }
+  } catch {
+    // ignore
+  }
+  return [{ ...DEFAULT_ADMIN }];
+}
 
 // 初始种子数据
 const seedTeachers: Teacher[] = [
@@ -70,14 +109,18 @@ export function useStore() {
     return stored.map(c => (c.campusId === undefined ? { ...c, campusId: '' } : c));
   });
   const [students, setStudents] = useState<Student[]>(() => loadFromStorage(STORAGE_KEYS.students, seedStudents));
-  const [account, setAccount] = useState<AccountInfo>(() => loadFromStorage(STORAGE_KEYS.account, DEFAULT_ACCOUNT));
+  const [accounts, setAccounts] = useState<Account[]>(() => loadAccounts());
+  const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
+    const id = localStorage.getItem(STORAGE_KEYS.currentUser);
+    return id || null;
+  });
 
   // 持久化
   useEffect(() => { saveToStorage(STORAGE_KEYS.teachers, teachers); }, [teachers]);
   useEffect(() => { saveToStorage(STORAGE_KEYS.campuses, campuses); }, [campuses]);
   useEffect(() => { saveToStorage(STORAGE_KEYS.classes, classes); }, [classes]);
   useEffect(() => { saveToStorage(STORAGE_KEYS.students, students); }, [students]);
-  useEffect(() => { saveToStorage(STORAGE_KEYS.account, account); }, [account]);
+  useEffect(() => { saveToStorage(STORAGE_KEYS.accounts, accounts); }, [accounts]);
 
   // 老师操作
   const addTeacher = useCallback((data: Omit<Teacher, 'id' | 'createdAt'>) => {
@@ -141,29 +184,63 @@ export function useStore() {
     setStudents(prev => prev.filter(s => s.id !== id));
   }, []);
 
-  // 认证
-  const [authed, setAuthed] = useState(() => localStorage.getItem(STORAGE_KEYS.auth) === 'true');
-  const login = useCallback(() => {
-    localStorage.setItem(STORAGE_KEYS.auth, 'true');
-    setAuthed(true);
-  }, []);
+  // 认证：当前登录用户
+  const currentUser = accounts.find(a => a.id === currentUserId) || null;
+  const isLoggedIn = !!currentUser;
+
+  const login = useCallback((username: string, password: string): boolean => {
+    const found = accounts.find(a => a.username === username && a.password === password);
+    if (!found) return false;
+    localStorage.setItem(STORAGE_KEYS.currentUser, found.id);
+    setCurrentUserId(found.id);
+    return true;
+  }, [accounts]);
+
   const logout = useCallback(() => {
-    localStorage.setItem(STORAGE_KEYS.auth, 'false');
-    setAuthed(false);
+    localStorage.removeItem(STORAGE_KEYS.currentUser);
+    setCurrentUserId(null);
   }, []);
 
-  // 账号管理
-  const updateAccount = useCallback((username: string, password: string) => {
-    setAccount({ username, password });
+  // ===== 账号管理（管理员操作）=====
+
+  // 添加子账号（角色固定为子账号）
+  const addAccount = useCallback((data: { username: string; password: string; permissions: PermissionId[] }) => {
+    const acc: Account = {
+      ...data,
+      id: generateId(),
+      role: 'sub',
+      createdAt: new Date().toISOString(),
+    };
+    setAccounts(prev => [...prev, acc]);
   }, []);
+
+  // 更新账号（权限 / 用户名 / 重置密码）
+  const updateAccount = useCallback((id: string, data: Partial<Omit<Account, 'id' | 'createdAt' | 'role'>>) => {
+    setAccounts(prev => prev.map(a => a.id === id ? { ...a, ...data } : a));
+  }, []);
+
+  // 删除子账号
+  const deleteAccount = useCallback((id: string) => {
+    setAccounts(prev => prev.filter(a => a.id !== id));
+  }, []);
+
+  // 当前账号修改自己的用户名 / 密码
+  const updateOwnAccount = useCallback((username: string, password: string) => {
+    setAccounts(prev => prev.map(a => a.id === currentUserId ? { ...a, username, password } : a));
+  }, [currentUserId]);
+
+  // 用户名是否可用（用于新建/改名校验；excludeId 排除自己）
+  const isUsernameTaken = useCallback((username: string, excludeId?: string) => {
+    return accounts.some(a => a.username === username && a.id !== excludeId);
+  }, [accounts]);
 
   return {
-    teachers, classes, students, campuses, account,
+    teachers, classes, students, campuses, accounts, currentUser,
     addTeacher, updateTeacher, deleteTeacher,
     addClass, updateClass, deleteClass,
     addStudent, updateStudent, deleteStudent,
     addCampus, updateCampus, deleteCampus,
-    updateAccount,
-    isLoggedIn: authed, login, logout,
+    addAccount, updateAccount, deleteAccount, updateOwnAccount, isUsernameTaken,
+    isLoggedIn, login, logout,
   };
 }

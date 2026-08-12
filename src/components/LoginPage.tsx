@@ -4,21 +4,22 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import type { AccountInfo } from '@/hooks/useStore';
+import type { Account } from '@/types';
 
 interface LoginPageProps {
-  account: AccountInfo;
-  onLogin: () => void;
+  accounts: Account[];
+  onLogin: (username: string, password: string) => boolean;
 }
 
-export default function LoginPage({ account, onLogin }: LoginPageProps) {
+export default function LoginPage({ accounts, onLogin }: LoginPageProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const isDefaultPassword = account.password === 'admin123';
+  const admin = accounts.find(a => a.role === 'admin');
+  const isDefaultPassword = admin ? admin.password === 'admin123' : false;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,11 +31,10 @@ export default function LoginPage({ account, onLogin }: LoginPageProps) {
     }
 
     setLoading(true);
-    // 模拟登录验证：与可修改的账号信息比对
+    // 模拟登录验证：在所有账号中比对
     setTimeout(() => {
-      if (username === account.username && password === account.password) {
-        onLogin();
-      } else {
+      const ok = onLogin(username.trim(), password);
+      if (!ok) {
         setError('用户名或密码错误');
         setLoading(false);
       }
@@ -106,13 +106,13 @@ export default function LoginPage({ account, onLogin }: LoginPageProps) {
             <div className="text-center text-sm text-muted-foreground bg-muted/50 rounded-lg px-3 py-2.5">
               {isDefaultPassword ? (
                 <>
-                  当前账号：<span className="font-semibold text-foreground">{account.username}</span>
+                  管理员账号：<span className="font-semibold text-foreground">admin</span>
                   {'　'}默认密码：<span className="font-semibold text-foreground">admin123</span>
-                  <span className="block text-xs mt-1">登录后可在右上角修改账号密码</span>
+                  <span className="block text-xs mt-1">子账号由管理员在「账号管理」中创建并分配权限</span>
                 </>
               ) : (
                 <>
-                  当前账号：<span className="font-semibold text-foreground">{account.username}</span>
+                  管理员账号：<span className="font-semibold text-foreground">{admin?.username}</span>
                   <span className="block text-xs mt-1">密码已修改，请使用新密码登录</span>
                 </>
               )}
