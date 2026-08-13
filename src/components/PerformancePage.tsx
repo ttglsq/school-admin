@@ -280,8 +280,8 @@ export default function PerformancePage(props: PerformancePageProps) {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
-                <TableHead>老师</TableHead>
                 <TableHead>等级</TableHead>
+                <TableHead>老师</TableHead>
                 <TableHead className="text-center">班级数</TableHead>
                 <TableHead className="text-right">听力工资</TableHead>
                 <TableHead className="text-right">复述工资</TableHead>
@@ -299,12 +299,12 @@ export default function PerformancePage(props: PerformancePageProps) {
               ) : (
                 allTeacherPerfs.map(tp => (
                   <TableRow key={tp.teacherId}>
-                    <TableCell className="font-medium">{tp.teacherName}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className={cn('border', TEACHER_LEVELS[tp.teacherLevel].color)}>
                         {TEACHER_LEVELS[tp.teacherLevel].label}
                       </Badge>
                     </TableCell>
+                    <TableCell className="font-medium">{tp.teacherName}</TableCell>
                     <TableCell className="text-center tabular-nums">{tp.classCount}</TableCell>
                     <TableCell className="text-right tabular-nums">¥{tp.hearingWage.toFixed(2)}</TableCell>
                     <TableCell className="text-right tabular-nums">¥{tp.retellWage.toFixed(2)}</TableCell>
