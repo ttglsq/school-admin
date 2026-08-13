@@ -274,7 +274,7 @@ export default function PerformancePage(props: PerformancePageProps) {
                   <div className="flex items-start gap-2 text-xs text-muted-foreground">
                     <Info className="w-4 h-4 mt-0.5 shrink-0" />
                     <div className="space-y-1">
-                      <p>听力工资 = 每周 查表y(元/周) × 时长系数 之和（每月按 {WEEKS_PER_MONTH} 周录入）｜ A初级班: 2课时÷3, 3课时÷3×4, 4课时÷3×4 ｜ B/C班: 2课时÷3×2, 3课时÷3×4, 4课时÷3×4, 得出数据再÷{BC_HEARING_DIVISOR}（先除再乘）</p>
+                      <p>听力工资 = 每周 查表y(元/周) × 时长系数 之和（每月按 {WEEKS_PER_MONTH} 周录入）｜ A初级班: 2课时÷3×2, 3课时÷3×4, 4课时÷3×4 ｜ B/C班: 2课时÷3×2, 3课时÷3×4, 4课时÷3×4, 得出数据再÷{BC_HEARING_DIVISOR}（先除再乘）</p>
                       <p>任一单周听力数据低于最低档位（{minHearingX} 分钟/周）时，按最低档位计薪（查表y 取最小挡位值，标注「↓最低档」）；未录入听力数据的周不计薪</p>
                       <p>复述工资: 3课时 ¥3/人次, 4课时 ¥4/人次, 2课时无 ｜ 班级管理费: A级老师 2课时¥140/3课时¥180/4课时¥200, B/C级老师 2课时¥160/3课时¥200/4课时¥220</p>
                     </div>
