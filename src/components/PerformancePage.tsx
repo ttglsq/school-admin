@@ -319,7 +319,7 @@ export default function PerformancePage(props: PerformancePageProps) {
                                     />
                                   </TableCell>
                                   <TableCell className="text-muted-foreground tabular-nums">
-                                    {d.y != null ? `¥${d.y.toFixed(2)}` : '—'}
+                                    {d.y != null ? `¥${d.y.toFixed(2)}` : d.hearingX != null ? '¥0.00' : '—'}
                                   </TableCell>
                                   <TableCell className="text-muted-foreground tabular-nums">
                                     ×{d.multiplier.toFixed(4)}
@@ -332,7 +332,7 @@ export default function PerformancePage(props: PerformancePageProps) {
                                     />
                                   </TableCell>
                                   <TableCell className="text-right font-semibold tabular-nums">
-                                    {d.monthlyWage > 0 ? `¥${d.monthlyWage.toFixed(2)}` : '—'}
+                                    {d.monthlyWage > 0 ? `¥${d.monthlyWage.toFixed(2)}` : d.hearingX != null ? '¥0.00' : '—'}
                                   </TableCell>
                                 </TableRow>
                               );
@@ -383,6 +383,7 @@ export default function PerformancePage(props: PerformancePageProps) {
                     <Info className="w-4 h-4 mt-0.5 shrink-0" />
                     <div className="space-y-1">
                       <p>听力工资 = 查表y(元/周) × 时长系数 × {WEEKS_PER_MONTH}周 ｜ A初级班: 2课时×2/3, 3课时×4/3, 4课时×4/3 ｜ B/C班: 2课时×2/3, 3课时×4/3, 4课时×2/3, 再÷{BC_HEARING_DIVISOR}</p>
+                      <p>听力数据未达到最低档位要求时，该学生听力工资按 0 计算（查表y 与 听力工资均显示 ¥0.00）</p>
                       <p>复述工资: 3课时 ¥3/人, 4课时 ¥4/人, 2课时无 ｜ 班级管理费: A级老师 2课时¥140/3课时¥180/4课时¥200, B/C级老师 2课时¥160/3课时¥200/4课时¥220</p>
                     </div>
                   </div>

@@ -16,7 +16,7 @@ export function teacherLevelToCoeffKey(level: TeacherLevel): SalaryCoefficientKe
 /**
  * 查听力系数表：根据 x(分钟/周) 查 y(元/周/人)
  * 向下取整到最近挡位（不超过 x 的最大挡位）；
- * x 小于最小挡位取最小，大于最大取最大
+ * x 小于最低挡位（未达到最低数据要求）→ 返回 null（听力工资为 0）
  */
 export function lookupSalaryY(table: { x: number; y: number }[], x: number): number | null {
   if (!table || table.length === 0) return null;
@@ -24,8 +24,14 @@ export function lookupSalaryY(table: { x: number; y: number }[], x: number): num
   for (const row of table) {
     if (x >= row.x) return row.y;
   }
-  // x 小于所有挡位，取最小挡位（最后一个）
-  return table[table.length - 1].y;
+  // x 小于最低挡位：未达到最低数据要求，无对应 y 值
+  return null;
+}
+
+/** 表中最低数据要求（最小挡位的 x 分钟/周），用于判断是否达标 */
+export function getMinThreshold(table: { x: number; y: number }[]): number | null {
+  if (!table || table.length === 0) return null;
+  return table[table.length - 1].x;
 }
 
 /** 时长系数（乘数） */
