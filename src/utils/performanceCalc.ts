@@ -16,7 +16,7 @@ export function teacherLevelToCoeffKey(level: TeacherLevel): SalaryCoefficientKe
 /**
  * 查听力系数表：根据 x(分钟/周) 查 y(元/周/人)
  * 向下取整到最近挡位（不超过 x 的最大挡位）；
- * x 小于最低挡位（未达到最低数据要求）→ 返回 null（听力工资为 0）
+ * x 低于最低挡位 → 按最低挡位计薪（取最小的 y 值）
  */
 export function lookupSalaryY(table: { x: number; y: number }[], x: number): number | null {
   if (!table || table.length === 0) return null;
@@ -24,8 +24,8 @@ export function lookupSalaryY(table: { x: number; y: number }[], x: number): num
   for (const row of table) {
     if (x >= row.x) return row.y;
   }
-  // x 小于最低挡位：未达到最低数据要求，无对应 y 值
-  return null;
+  // x 低于最低挡位：按最低挡位计薪（取最小的 y 值）
+  return table[table.length - 1].y;
 }
 
 /** 表中最低数据要求（最小挡位的 x 分钟/周），用于判断是否达标 */
@@ -65,6 +65,7 @@ export interface StudentWeekDetail {
   week: number;          // 第几周（1~4）
   hearingX: number | null;
   y: number | null;      // 查表得到的元/周/人（该周）
+  belowMin: boolean;     // 该周听力时长是否低于最低挡位（按最低挡计薪）
   weeklyWage: number;    // 该周听力工资
 }
 
@@ -139,8 +140,11 @@ export function calculateClassPerformance(
       const hearingX = rec?.hearingX ?? null;
       let y: number | null = null;
       let weeklyWage = 0;
+      let belowMin = false;
 
       if (hearingX != null && hearingX > 0) {
+        const minX = getMinThreshold(table);
+        belowMin = minX != null && hearingX < minX;
         y = lookupSalaryY(table, hearingX);
         if (y != null) {
           weeklyWage = y * multiplier;
@@ -149,7 +153,7 @@ export function calculateClassPerformance(
       }
 
       monthlyWage += weeklyWage;
-      weeks.push({ week: w, hearingX, y, weeklyWage });
+      weeks.push({ week: w, hearingX, y, belowMin, weeklyWage });
       if (rec?.retell) stuRetell++;
     }
 

@@ -13,6 +13,7 @@ import {
   calculateTeacherPerformance,
   teacherLevelToCoeffKey,
   isBCClass,
+  getMinThreshold,
   type TeacherPerformanceResult,
 } from '@/utils/performanceCalc';
 
@@ -55,6 +56,16 @@ export default function PerformancePage(props: PerformancePageProps) {
   }, [teachers, classes, students, monthRecords, salaryStandard]);
 
   const summaryTotal = allTeacherPerfs.reduce((s, t) => s + t.total, 0);
+
+  // 听力系数表最低挡位（分钟/周），低于该值按最低挡计薪
+  const minHearingX = useMemo(() => {
+    const keys = Object.keys(salaryStandard || {}) as (keyof SalaryStandardData)[];
+    for (const k of keys) {
+      const t = salaryStandard[k];
+      if (t && t.length) return getMinThreshold(t);
+    }
+    return 210;
+  }, [salaryStandard]);
 
   return (
     <div className="space-y-4 max-w-6xl mx-auto">
@@ -192,6 +203,9 @@ export default function PerformancePage(props: PerformancePageProps) {
                                     {w.y == null && (
                                       <span className="ml-1 text-[10px] text-red-500">0</span>
                                     )}
+                                    {w.belowMin && (
+                                      <span className="ml-1 text-[10px] text-blue-500">↓最低档</span>
+                                    )}
                                   </span>
                                 ) : '—'}
                               </TableCell>
@@ -261,7 +275,7 @@ export default function PerformancePage(props: PerformancePageProps) {
                     <Info className="w-4 h-4 mt-0.5 shrink-0" />
                     <div className="space-y-1">
                       <p>听力工资 = 每周 查表y(元/周) × 时长系数 之和（每月按 {WEEKS_PER_MONTH} 周录入）｜ A初级班: 2课时×2/3, 3课时×4/3, 4课时×4/3 ｜ B/C班: 2课时×2/3, 3课时×4/3, 4课时×2/3, 再÷{BC_HEARING_DIVISOR}</p>
-                      <p>任一单周听力数据未达到最低档位要求时，该周听力工资按 0 计算（查表y 与 听力工资均显示 ¥0.00）</p>
+                      <p>任一单周听力数据低于最低档位（{minHearingX} 分钟/周）时，按最低档位计薪（查表y 取最小挡位值，标注「↓最低档」）；未录入听力数据的周不计薪</p>
                       <p>复述工资: 3课时 ¥3/人次, 4课时 ¥4/人次, 2课时无 ｜ 班级管理费: A级老师 2课时¥140/3课时¥180/4课时¥200, B/C级老师 2课时¥160/3课时¥200/4课时¥220</p>
                     </div>
                   </div>
