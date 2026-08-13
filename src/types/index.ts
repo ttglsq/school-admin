@@ -49,6 +49,7 @@ export const PERMISSION_MODULES = [
   { id: 'classes', label: '班级管理' },
   { id: 'students', label: '学生管理' },
   { id: 'salary', label: '听力系数' },
+  { id: 'performance', label: '绩效考核' },
 ] as const;
 
 export type PermissionId = (typeof PERMISSION_MODULES)[number]['id'];
@@ -112,6 +113,53 @@ export const CLASS_DURATIONS: Record<ClassDuration, { label: string; shortLabel:
   A: { label: 'A 2课时', shortLabel: '2课时', color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
   B: { label: 'B 3课时', shortLabel: '3课时', color: 'bg-cyan-100 text-cyan-700 border-cyan-200' },
   C: { label: 'C 4课时', shortLabel: '4课时', color: 'bg-orange-100 text-orange-700 border-orange-200' },
+};
+
+// ===== 月度绩效考核 =====
+
+/** 学生月度绩效数据（每月每个学生一条） */
+export interface StudentMonthlyRecord {
+  id: string;
+  studentId: string;
+  classId: string;
+  yearMonth: string;       // "2026-08"
+  hearingX: number | null; // 听力数据(分钟/周)，null=未填
+  retell: boolean;         // 是否完成复述
+}
+
+/** 每月按多少周计算（听力系数表 y 是"元/周/人"） */
+export const WEEKS_PER_MONTH = 4;
+
+/**
+ * 听力数据工资 — 时长系数
+ * key = 班级等级(A初级/B入门/C启蒙)，value 按课时时长(2/3/4)给出乘数
+ * 乘数含义：系数(查表y) × 乘数
+ */
+export const HEARING_DURATION_MULTIPLIER: Record<ClassLevel, Record<ClassDuration, number>> = {
+  // A初级班：2课时×2/3，3课时×4/3，4课时×4/3
+  A: { A: 2 / 3, B: 4 / 3, C: 4 / 3 },
+  // B入门/C启蒙班：2课时×2/3，3课时×4/3，4课时×2/3
+  B: { A: 2 / 3, B: 4 / 3, C: 2 / 3 },
+  C: { A: 2 / 3, B: 4 / 3, C: 2 / 3 },
+};
+
+/** B/C 班听力工资需额外 ÷0.9 */
+export const BC_HEARING_DIVISOR = 0.9;
+
+/** 复述工资单价（按课时时长，元/人） */
+export const RETELL_UNIT_PRICE: Record<ClassDuration, number> = {
+  A: 0, // 2课时无复述工资
+  B: 3, // 3课时 3元/人
+  C: 4, // 4课时 4元/人
+};
+
+/** 班级管理费（元/月），按老师等级 × 课时时长 */
+export const MANAGEMENT_FEE: Record<TeacherLevel, Record<ClassDuration, number>> = {
+  // 老师A级
+  A: { A: 140, B: 180, C: 200 },
+  // 老师B级、C级
+  B: { A: 160, B: 200, C: 220 },
+  C: { A: 160, B: 200, C: 220 },
 };
 
 // 生成唯一ID

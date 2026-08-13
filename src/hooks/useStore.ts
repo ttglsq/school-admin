@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Teacher, ClassInfo, Student, Campus, Account, PermissionId, SalaryStandardData, SalaryCoefficientKey } from '@/types';
+import type { Teacher, ClassInfo, Student, Campus, Account, PermissionId, SalaryStandardData, SalaryCoefficientKey, StudentMonthlyRecord } from '@/types';
 import { generateId, ALL_PERMISSIONS } from '@/types';
 import { SEED_SALARY_STANDARD } from '@/data/salarySeed';
 
@@ -11,6 +11,7 @@ const STORAGE_KEYS = {
   accounts: 'school_accounts',
   currentUser: 'school_current_user',
   salaryStandard: 'school_salary_standard',
+  monthlyRecords: 'school_monthly_records',
   // 旧版本单账号存储，仅用于数据迁移
   legacyAccount: 'school_account',
   legacyAuth: 'school_auth',
@@ -113,6 +114,7 @@ export function useStore() {
   const [students, setStudents] = useState<Student[]>(() => loadFromStorage(STORAGE_KEYS.students, seedStudents));
   const [accounts, setAccounts] = useState<Account[]>(() => loadAccounts());
   const [salaryStandard, setSalaryStandard] = useState<SalaryStandardData>(() => loadFromStorage(STORAGE_KEYS.salaryStandard, SEED_SALARY_STANDARD));
+  const [monthlyRecords, setMonthlyRecords] = useState<StudentMonthlyRecord[]>(() => loadFromStorage<StudentMonthlyRecord[]>(STORAGE_KEYS.monthlyRecords, []));
   const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
     const id = localStorage.getItem(STORAGE_KEYS.currentUser);
     return id || null;
@@ -125,6 +127,7 @@ export function useStore() {
   useEffect(() => { saveToStorage(STORAGE_KEYS.students, students); }, [students]);
   useEffect(() => { saveToStorage(STORAGE_KEYS.accounts, accounts); }, [accounts]);
   useEffect(() => { saveToStorage(STORAGE_KEYS.salaryStandard, salaryStandard); }, [salaryStandard]);
+  useEffect(() => { saveToStorage(STORAGE_KEYS.monthlyRecords, monthlyRecords); }, [monthlyRecords]);
 
   // 老师操作
   const addTeacher = useCallback((data: Omit<Teacher, 'id' | 'createdAt'>) => {
@@ -250,14 +253,31 @@ export function useStore() {
     setSalaryStandard(prev => ({ ...prev, [key]: SEED_SALARY_STANDARD[key].map(r => ({ ...r })) }));
   }, []);
 
+  // ===== 月度绩效数据操作 =====
+
+  // 获取某月的全部记录
+  const getMonthlyRecords = useCallback((yearMonth: string): StudentMonthlyRecord[] => {
+    return monthlyRecords.filter(r => r.yearMonth === yearMonth);
+  }, [monthlyRecords]);
+
+  // 批量保存某月的记录（覆盖该月）
+  const saveMonthlyRecords = useCallback((yearMonth: string, records: StudentMonthlyRecord[]) => {
+    setMonthlyRecords(prev => {
+      // 删除该月旧记录，写入新记录
+      const others = prev.filter(r => r.yearMonth !== yearMonth);
+      return [...others, ...records];
+    });
+  }, []);
+
   return {
-    teachers, classes, students, campuses, accounts, currentUser, salaryStandard,
+    teachers, classes, students, campuses, accounts, currentUser, salaryStandard, monthlyRecords,
     addTeacher, updateTeacher, deleteTeacher,
     addClass, updateClass, deleteClass,
     addStudent, updateStudent, deleteStudent,
     addCampus, updateCampus, deleteCampus,
     addAccount, updateAccount, deleteAccount, updateOwnAccount, isUsernameTaken,
     updateSalaryStandard, resetSalaryStandard,
+    getMonthlyRecords, saveMonthlyRecords,
     isLoggedIn, login, logout,
   };
 }
