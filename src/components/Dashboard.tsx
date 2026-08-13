@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { GraduationCap, Users, School, LayoutDashboard, LogOut, Menu, Building2, KeyRound, UserCog, Coins, Calculator } from 'lucide-react';
+import { GraduationCap, Users, School, LayoutDashboard, LogOut, Menu, Building2, KeyRound, UserCog, Coins, Calculator, ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
 import { Card, CardContent } from '@/components/ui/card';
@@ -10,12 +10,13 @@ import StudentManagement from './StudentManagement';
 import CampusManagement from './CampusManagement';
 import AccountManagement from './AccountManagement';
 import SalaryStandardPage from './SalaryStandardPage';
+import PerformanceEntryPage from './PerformanceEntryPage';
 import PerformancePage from './PerformancePage';
 import AccountSettingsDialog from './AccountSettingsDialog';
 import type { Teacher, ClassInfo, Student, Campus, Account, PermissionId, SalaryStandardData, SalaryCoefficientKey, SalaryStandardRow, StudentMonthlyRecord } from '@/types';
 import { TEACHER_LEVELS, CLASS_LEVELS, ROLE_LABELS } from '@/types';
 
-export type PageId = 'overview' | 'campuses' | 'teachers' | 'classes' | 'students' | 'accounts' | 'salary' | 'performance';
+export type PageId = 'overview' | 'campuses' | 'teachers' | 'classes' | 'students' | 'accounts' | 'salary' | 'entry' | 'performance';
 
 interface DashboardProps {
   teachers: Teacher[];
@@ -53,7 +54,7 @@ interface DashboardProps {
   onResetSalaryStandard: (key: SalaryCoefficientKey) => void;
   // 绩效考核
   monthlyRecords: StudentMonthlyRecord[];
-  onSaveMonthlyRecords: (yearMonth: string, records: StudentMonthlyRecord[]) => void;
+  onSaveWeeklyRecords: (yearMonth: string, week: number, records: StudentMonthlyRecord[]) => void;
 }
 
 interface NavItem {
@@ -69,7 +70,8 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { id: 'classes', label: '班级管理', icon: School },
   { id: 'students', label: '学生管理', icon: Users },
   { id: 'salary', label: '听力系数', icon: Coins },
-  { id: 'performance', label: '绩效考核', icon: Calculator },
+  { id: 'entry', label: '数据录入', icon: ClipboardList },
+  { id: 'performance', label: '绩效展示', icon: Calculator },
   { id: 'accounts', label: '账号管理', icon: UserCog },
 ];
 
@@ -223,6 +225,16 @@ export default function Dashboard(props: DashboardProps) {
             onReset={props.onResetSalaryStandard}
           />
         );
+      case 'entry':
+        return (
+          <PerformanceEntryPage
+            teachers={props.teachers}
+            classes={props.classes}
+            students={props.students}
+            monthlyRecords={props.monthlyRecords}
+            onSaveWeeklyRecords={props.onSaveWeeklyRecords}
+          />
+        );
       case 'performance':
         return (
           <PerformancePage
@@ -231,7 +243,6 @@ export default function Dashboard(props: DashboardProps) {
             students={props.students}
             salaryStandard={props.salaryStandard}
             monthlyRecords={props.monthlyRecords}
-            onSaveMonthlyRecords={props.onSaveMonthlyRecords}
           />
         );
       default:
@@ -513,9 +524,14 @@ function OverviewPage(
                 <Coins className="w-4 h-4" /> 听力系数
               </Button>
             )}
+            {canAccess('entry') && (
+              <Button onClick={() => onNavigate('entry')} variant="outline" className="gap-2">
+                <ClipboardList className="w-4 h-4" /> 数据录入
+              </Button>
+            )}
             {canAccess('performance') && (
               <Button onClick={() => onNavigate('performance')} variant="outline" className="gap-2">
-                <Calculator className="w-4 h-4" /> 绩效考核
+                <Calculator className="w-4 h-4" /> 绩效展示
               </Button>
             )}
           </div>

@@ -49,7 +49,8 @@ export const PERMISSION_MODULES = [
   { id: 'classes', label: '班级管理' },
   { id: 'students', label: '学生管理' },
   { id: 'salary', label: '听力系数' },
-  { id: 'performance', label: '绩效考核' },
+  { id: 'entry', label: '绩效数据录入' },
+  { id: 'performance', label: '绩效展示' },
 ] as const;
 
 export type PermissionId = (typeof PERMISSION_MODULES)[number]['id'];
@@ -117,14 +118,15 @@ export const CLASS_DURATIONS: Record<ClassDuration, { label: string; shortLabel:
 
 // ===== 月度绩效考核 =====
 
-/** 学生月度绩效数据（每月每个学生一条） */
+/** 学生月度绩效数据（每月每周每个学生一条） */
 export interface StudentMonthlyRecord {
   id: string;
   studentId: string;
   classId: string;
   yearMonth: string;       // "2026-08"
+  week: number;            // 第几周（1~4）
   hearingX: number | null; // 听力数据(分钟/周)，null=未填
-  retell: boolean;         // 是否完成复述
+  retell: boolean;         // 该周是否完成复述
 }
 
 /** 每月按多少周计算（听力系数表 y 是"元/周/人"） */

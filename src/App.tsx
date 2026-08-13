@@ -38,7 +38,7 @@ export default function App() {
           onUpdateSalaryStandard={store.updateSalaryStandard}
           onResetSalaryStandard={store.resetSalaryStandard}
           monthlyRecords={store.monthlyRecords}
-          onSaveMonthlyRecords={store.saveMonthlyRecords}
+          onSaveWeeklyRecords={store.saveWeeklyRecords}
         />
       ) : (
         <LoginPage accounts={store.accounts} onLogin={store.login} />

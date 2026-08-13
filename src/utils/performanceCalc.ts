@@ -61,14 +61,21 @@ export function durationToHours(d: ClassDuration): number {
 
 // ===== 班级绩效计算 =====
 
+export interface StudentWeekDetail {
+  week: number;          // 第几周（1~4）
+  hearingX: number | null;
+  y: number | null;      // 查表得到的元/周/人（该周）
+  weeklyWage: number;    // 该周听力工资
+}
+
 export interface StudentHearingDetail {
   studentId: string;
   studentName: string;
-  hearingX: number | null;
-  y: number | null;          // 查表得到的元/周/人
-  multiplier: number;        // 时长系数
-  monthlyWage: number;        // 该学生月度听力工资
-  isBC: boolean;             // 是否 B/C 班（÷0.9）
+  weeks: StudentWeekDetail[];  // 每周明细（1~4 周）
+  multiplier: number;          // 时长系数
+  monthlyWage: number;         // 该学生月度听力工资 = 每周工资之和
+  isBC: boolean;               // 是否 B/C 班（÷0.9）
+  retellCount: number;         // 该月完成复述的周数
 }
 
 export interface ClassPerformanceResult {
@@ -107,38 +114,56 @@ export function calculateClassPerformance(
   const mgmtFee = getManagementFee(teacherLevel, cls.duration);
 
   const classStudents = students.filter(s => s.classId === cls.id);
-  const recordMap = new Map(records.filter(r => r.classId === cls.id).map(r => [r.studentId, r]));
+
+  // 学生 -> (周 -> 记录)
+  const recordMap = new Map<string, Map<number, StudentMonthlyRecord>>();
+  for (const r of records.filter(r => r.classId === cls.id)) {
+    const week = r.week ?? 1;
+    let m = recordMap.get(r.studentId);
+    if (!m) { m = new Map(); recordMap.set(r.studentId, m); }
+    m.set(week, r);
+  }
 
   const hearingDetails: StudentHearingDetail[] = [];
   let hearingWage = 0;
   let retellCount = 0;
 
   for (const stu of classStudents) {
-    const rec = recordMap.get(stu.id);
-    const hearingX = rec?.hearingX ?? null;
-    let y: number | null = null;
+    const recs = recordMap.get(stu.id);
+    const weeks: StudentWeekDetail[] = [];
     let monthlyWage = 0;
+    let stuRetell = 0;
 
-    if (hearingX != null && hearingX > 0) {
-      y = lookupSalaryY(table, hearingX);
-      if (y != null) {
-        monthlyWage = y * multiplier * WEEKS_PER_MONTH;
-        if (isBC) monthlyWage /= BC_HEARING_DIVISOR;
+    for (let w = 1; w <= WEEKS_PER_MONTH; w++) {
+      const rec = recs?.get(w);
+      const hearingX = rec?.hearingX ?? null;
+      let y: number | null = null;
+      let weeklyWage = 0;
+
+      if (hearingX != null && hearingX > 0) {
+        y = lookupSalaryY(table, hearingX);
+        if (y != null) {
+          weeklyWage = y * multiplier;
+          if (isBC) weeklyWage /= BC_HEARING_DIVISOR;
+        }
       }
+
+      monthlyWage += weeklyWage;
+      weeks.push({ week: w, hearingX, y, weeklyWage });
+      if (rec?.retell) stuRetell++;
     }
 
     hearingWage += monthlyWage;
+    retellCount += stuRetell;
     hearingDetails.push({
       studentId: stu.id,
       studentName: stu.name,
-      hearingX,
-      y,
+      weeks,
       multiplier,
       monthlyWage,
       isBC,
+      retellCount: stuRetell,
     });
-
-    if (rec?.retell) retellCount++;
   }
 
   const retellWage = retellCount * retellPrice;

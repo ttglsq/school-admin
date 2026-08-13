@@ -114,7 +114,11 @@ export function useStore() {
   const [students, setStudents] = useState<Student[]>(() => loadFromStorage(STORAGE_KEYS.students, seedStudents));
   const [accounts, setAccounts] = useState<Account[]>(() => loadAccounts());
   const [salaryStandard, setSalaryStandard] = useState<SalaryStandardData>(() => loadFromStorage(STORAGE_KEYS.salaryStandard, SEED_SALARY_STANDARD));
-  const [monthlyRecords, setMonthlyRecords] = useState<StudentMonthlyRecord[]>(() => loadFromStorage<StudentMonthlyRecord[]>(STORAGE_KEYS.monthlyRecords, []));
+  const [monthlyRecords, setMonthlyRecords] = useState<StudentMonthlyRecord[]>(() => {
+    const stored = loadFromStorage<StudentMonthlyRecord[]>(STORAGE_KEYS.monthlyRecords, []);
+    // 兼容旧数据：没有 week 字段的记录视为第 1 周
+    return stored.map(r => (r.week == null ? { ...r, week: 1 } : r));
+  });
   const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
     const id = localStorage.getItem(STORAGE_KEYS.currentUser);
     return id || null;
@@ -260,11 +264,11 @@ export function useStore() {
     return monthlyRecords.filter(r => r.yearMonth === yearMonth);
   }, [monthlyRecords]);
 
-  // 批量保存某月的记录（覆盖该月）
-  const saveMonthlyRecords = useCallback((yearMonth: string, records: StudentMonthlyRecord[]) => {
+  // 批量保存某月某一周的全部记录（覆盖该月该周）
+  const saveWeeklyRecords = useCallback((yearMonth: string, week: number, records: StudentMonthlyRecord[]) => {
     setMonthlyRecords(prev => {
-      // 删除该月旧记录，写入新记录
-      const others = prev.filter(r => r.yearMonth !== yearMonth);
+      // 删除该月该周旧记录，写入新记录
+      const others = prev.filter(r => !(r.yearMonth === yearMonth && r.week === week));
       return [...others, ...records];
     });
   }, []);
@@ -277,7 +281,7 @@ export function useStore() {
     addCampus, updateCampus, deleteCampus,
     addAccount, updateAccount, deleteAccount, updateOwnAccount, isUsernameTaken,
     updateSalaryStandard, resetSalaryStandard,
-    getMonthlyRecords, saveMonthlyRecords,
+    getMonthlyRecords, saveWeeklyRecords,
     isLoggedIn, login, logout,
   };
 }
