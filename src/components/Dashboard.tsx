@@ -55,6 +55,8 @@ interface DashboardProps {
   // 绩效考核
   monthlyRecords: StudentMonthlyRecord[];
   onSaveWeeklyRecords: (yearMonth: string, week: number, records: StudentMonthlyRecord[]) => void;
+  // 云端同步状态
+  cloudStatus: 'syncing' | 'synced' | 'offline';
 }
 
 interface NavItem {
@@ -144,6 +146,30 @@ export default function Dashboard(props: DashboardProps) {
           );
         })}
       </nav>
+
+      {/* Cloud sync status */}
+      <div className="px-3 py-2 border-t border-sidebar-border">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-sidebar-foreground/60">
+          {props.cloudStatus === 'syncing' && (
+            <>
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+              <span>云端同步中…</span>
+            </>
+          )}
+          {props.cloudStatus === 'synced' && (
+            <>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+              <span>已同步到云端</span>
+            </>
+          )}
+          {props.cloudStatus === 'offline' && (
+            <>
+              <span className="w-2 h-2 rounded-full bg-red-400 shrink-0" />
+              <span>云端离线，使用本地数据</span>
+            </>
+          )}
+        </div>
+      </div>
 
       {/* Logout */}
       <div className="px-3 py-4 border-t border-sidebar-border">

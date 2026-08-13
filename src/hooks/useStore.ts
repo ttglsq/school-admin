@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Teacher, ClassInfo, Student, Campus, Account, PermissionId, SalaryStandardData, SalaryCoefficientKey, StudentMonthlyRecord } from '@/types';
 import { generateId, ALL_PERMISSIONS } from '@/types';
 import { SEED_SALARY_STANDARD } from '@/data/salarySeed';
+import { fetchCloudPackage, pushCloudPackage, isSeedPackage, type CloudDataPackage } from '@/lib/cloudSync';
 
 const STORAGE_KEYS = {
   teachers: 'school_teachers',
@@ -12,10 +13,27 @@ const STORAGE_KEYS = {
   currentUser: 'school_current_user',
   salaryStandard: 'school_salary_standard',
   monthlyRecords: 'school_monthly_records',
+  // 云端同步元信息（本地缓存与云端的时间戳）
+  cloudMeta: 'school_cloud_meta',
   // 旧版本单账号存储，仅用于数据迁移
   legacyAccount: 'school_account',
   legacyAuth: 'school_auth',
 };
+
+export type CloudSyncStatus = 'syncing' | 'synced' | 'offline';
+
+interface CloudMeta { updatedAt: number }
+
+function loadCloudMeta(): CloudMeta | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.cloudMeta);
+    return raw ? JSON.parse(raw) as CloudMeta : null;
+  } catch { return null; }
+}
+
+function saveCloudMeta(meta: CloudMeta) {
+  try { localStorage.setItem(STORAGE_KEYS.cloudMeta, JSON.stringify(meta)); } catch { /* ignore */ }
+}
 
 // 默认管理员账号
 const DEFAULT_ADMIN: Account = {
@@ -61,31 +79,33 @@ function loadAccounts(): Account[] {
   return [{ ...DEFAULT_ADMIN }];
 }
 
-// 初始种子数据
-const seedTeachers: Teacher[] = [
+// 初始种子数据（导出供云端同步判断「全新设备」使用）
+export const seedTeachers: Teacher[] = [
   { id: 't1', name: '王明华', phone: '13800138001', level: 'A', createdAt: '2024-01-15T08:00:00Z' },
   { id: 't2', name: '李秀英', phone: '13800138002', level: 'B', createdAt: '2024-02-20T08:00:00Z' },
   { id: 't3', name: '张伟强', phone: '13800138003', level: 'C', createdAt: '2024-03-10T08:00:00Z' },
 ];
 
-const seedCampuses: Campus[] = [
+export const seedCampuses: Campus[] = [
   { id: 'cp1', name: '万象城校区', address: '市中心万象城购物中心3层', createdAt: '2024-01-10T08:00:00Z' },
   { id: 'cp2', name: '高新校区', address: '高新区科技路128号', createdAt: '2024-01-12T08:00:00Z' },
 ];
 
-const seedClasses: ClassInfo[] = [
+export const seedClasses: ClassInfo[] = [
   { id: 'c1', name: '一年级一班', level: 'A', duration: 'A', teacherId: 't1', campusId: 'cp1', createdAt: '2024-01-20T08:00:00Z' },
   { id: 'c2', name: '二年级三班', level: 'B', duration: 'B', teacherId: 't2', campusId: 'cp1', createdAt: '2024-02-25T08:00:00Z' },
   { id: 'c3', name: '幼小衔接班', level: 'C', duration: 'C', teacherId: 't3', campusId: 'cp2', createdAt: '2024-03-15T08:00:00Z' },
 ];
 
-const seedStudents: Student[] = [
+export const seedStudents: Student[] = [
   { id: 's1', name: '陈小明', contact: '13900139001', classId: 'c1', createdAt: '2024-01-25T08:00:00Z' },
   { id: 's2', name: '刘小红', contact: '13900139002', classId: 'c1', createdAt: '2024-01-26T08:00:00Z' },
   { id: 's3', name: '赵小刚', contact: '13900139003', classId: 'c2', createdAt: '2024-02-28T08:00:00Z' },
   { id: 's4', name: '孙小丽', contact: '13900139004', classId: 'c3', createdAt: '2024-03-18T08:00:00Z' },
   { id: 's5', name: '周小军', contact: '13900139005', classId: '', createdAt: '2024-03-19T08:00:00Z' },
 ];
+
+const SEEDS = { seedTeachers, seedClasses, seedStudents, seedCampuses };
 
 function loadFromStorage<T>(key: string, seed: T): T {
   try {
@@ -123,6 +143,102 @@ export function useStore() {
     const id = localStorage.getItem(STORAGE_KEYS.currentUser);
     return id || null;
   });
+
+  // ===== 云端同步 =====
+  const [cloudStatus, setCloudStatus] = useState<CloudSyncStatus>('syncing');
+  const bootedRef = useRef(false); // 云同步完成前，不向上传云端（避免覆盖）
+
+  // 组装整库快照
+  const buildPackage = useCallback((): CloudDataPackage => ({
+    updatedAt: Date.now(),
+    teachers, classes, students, campuses, accounts, salaryStandard, monthlyRecords,
+  }), [teachers, classes, students, campuses, accounts, salaryStandard, monthlyRecords]);
+
+  // 用云端数据覆盖本地（写 state + 本地缓存 + 同步 meta）
+  const applyCloud = useCallback((pkg: CloudDataPackage) => {
+    setTeachers(pkg.teachers);
+    setClasses(pkg.classes);
+    setStudents(pkg.students);
+    setCampuses(pkg.campuses);
+    setAccounts(pkg.accounts);
+    setSalaryStandard(pkg.salaryStandard);
+    setMonthlyRecords(pkg.monthlyRecords);
+    saveCloudMeta({ updatedAt: pkg.updatedAt });
+  }, []);
+
+  // 上传本地快照（成功后记录 meta）
+  const uploadLocal = useCallback(async (localPkg: CloudDataPackage) => {
+    const ok = await pushCloudPackage(localPkg);
+    if (ok) saveCloudMeta({ updatedAt: localPkg.updatedAt });
+    return ok;
+  }, []);
+
+  // 启动时：拉取云端并合并（只执行一次）
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await fetchCloudPackage();
+      if (cancelled) return;
+      const local = buildPackage();
+      if (!res.ok) {
+        // 网络/配置失败：继续用本地缓存，提示离线
+        setCloudStatus('offline');
+        bootedRef.current = true;
+        return;
+      }
+      const remote = res.data;
+      const localMeta = loadCloudMeta();
+      const localIsSeed = isSeedPackage(local, SEEDS);
+
+      if (!remote) {
+        // 云端还没有数据：把本地数据上传作为初始库（保留现有录入）
+        const ok = await uploadLocal(local);
+        setCloudStatus(ok ? 'synced' : 'offline');
+      } else {
+        const remoteIsSeed = isSeedPackage(remote, SEEDS);
+        if (remoteIsSeed && !localIsSeed) {
+          // 云端是空库种子、本地有真实数据 → 本地上传
+          const ok = await uploadLocal(local);
+          setCloudStatus(ok ? 'synced' : 'offline');
+        } else if (localIsSeed && !remoteIsSeed) {
+          // 本地是全新种子、云端有真实数据 → 使用云端
+          applyCloud(remote);
+          setCloudStatus('synced');
+        } else {
+          // 两边都有数据（或都是种子）：按时间戳，新的覆盖
+          if (!localMeta || remote.updatedAt >= localMeta.updatedAt) {
+            applyCloud(remote);
+            setCloudStatus('synced');
+          } else {
+            const ok = await uploadLocal(local);
+            setCloudStatus(ok ? 'synced' : 'offline');
+          }
+        }
+      }
+      bootedRef.current = true;
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 数据变化：防抖 1.5s 上传云端（保留本地缓存兜底）
+  const dataRef = useRef<CloudDataPackage>(buildPackage());
+  dataRef.current = buildPackage();
+  useEffect(() => {
+    if (!bootedRef.current) return;
+    const t = setTimeout(() => {
+      void (async () => {
+        const ok = await pushCloudPackage(dataRef.current);
+        if (ok) {
+          saveCloudMeta({ updatedAt: dataRef.current.updatedAt });
+          setCloudStatus('synced');
+        } else {
+          setCloudStatus('offline');
+        }
+      })();
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [teachers, classes, students, campuses, accounts, salaryStandard, monthlyRecords]);
 
   // 持久化
   useEffect(() => { saveToStorage(STORAGE_KEYS.teachers, teachers); }, [teachers]);
@@ -275,6 +391,7 @@ export function useStore() {
 
   return {
     teachers, classes, students, campuses, accounts, currentUser, salaryStandard, monthlyRecords,
+    cloudStatus,
     addTeacher, updateTeacher, deleteTeacher,
     addClass, updateClass, deleteClass,
     addStudent, updateStudent, deleteStudent,
