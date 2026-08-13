@@ -156,11 +156,11 @@ export const RETELL_UNIT_PRICE: Record<ClassDuration, number> = {
 
 /** 班级管理费（元/月），按老师等级 × 课时时长 */
 export const MANAGEMENT_FEE: Record<TeacherLevel, Record<ClassDuration, number>> = {
-  // 老师A级
-  A: { A: 140, B: 180, C: 200 },
-  // 老师B级、C级
-  B: { A: 160, B: 200, C: 220 },
-  C: { A: 160, B: 200, C: 220 },
+  // 老师A级：2课时160/月，3课时200/月，4课时220/月
+  A: { A: 160, B: 200, C: 220 },
+  // 老师B级、C级：2课时140/月，3课时180/月，4课时200/月
+  B: { A: 140, B: 180, C: 200 },
+  C: { A: 140, B: 180, C: 200 },
 };
 
 // 生成唯一ID
