@@ -397,10 +397,11 @@ export function useStore() {
 
   // ===== D级兼职老师出勤记录操作 =====
 
-  // 保存某兼职老师某月某周全部出勤记录（覆盖该月该周）
+  // 保存某老师某月某周全部出勤记录（覆盖该月该周该老师）
   const savePartTimeRecords = useCallback((yearMonth: string, week: number, records: PartTimeWeeklyRecord[]) => {
     setPartTimeRecords(prev => {
-      const others = prev.filter(r => !(r.yearMonth === yearMonth && r.week === week));
+      const teacherIds = new Set(records.map(r => r.teacherId));
+      const others = prev.filter(r => !(r.yearMonth === yearMonth && r.week === week && teacherIds.has(r.teacherId)));
       return [...others, ...records];
     });
   }, []);

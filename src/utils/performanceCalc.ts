@@ -64,7 +64,7 @@ export function durationToHours(d: ClassDuration): number {
 // ===== 班级绩效计算 =====
 
 export interface StudentWeekDetail {
-  week: number;          // 第几周（1~4）
+  week: number;          // 第几周（1~5）
   hearingX: number | null;
   y: number | null;      // 查表得到的元/周/人（该周）
   belowMin: boolean;     // 该周听力时长是否低于最低挡位（按最低挡计薪）
@@ -152,7 +152,13 @@ export function calculateClassPerformance(
   const multiplier = getDurationMultiplier(cls.level, cls.duration);
   const isBC = isBCClass(cls.level);
   const retellPrice = getRetellUnitPrice(cls.duration);
-  const mgmtFee = getManagementFee(teacherLevel, cls.duration);
+  const baseMgmtFee = getManagementFee(teacherLevel, cls.duration);
+
+  // 按实际出勤周数计算管理费（只有打勾的周数才计入）
+  const attendedWeeks = partTimeRecords.filter(
+    r => r.classId === cls.id && r.yearMonth === yearMonth && r.attended
+  ).length;
+  const mgmtFee = baseMgmtFee * attendedWeeks / WEEKS_PER_MONTH;
 
   // 学生 -> (周 -> 记录)
   const recordMap = new Map<string, Map<number, StudentMonthlyRecord>>();
