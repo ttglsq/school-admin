@@ -34,7 +34,7 @@ export default function TeacherManagement({ teachers, onAdd, onUpdate, onDelete 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: '', phone: '', level: '' as TeacherLevel | '' });
+  const [form, setForm] = useState({ name: '', phone: '', level: '' as TeacherLevel | '', idCard: '', joinDate: '' });
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -47,13 +47,13 @@ export default function TeacherManagement({ teachers, onAdd, onUpdate, onDelete 
   }, [teachers, search]);
 
   const openAdd = () => {
-    setForm({ name: '', phone: '', level: '' });
+    setForm({ name: '', phone: '', level: '', idCard: '', joinDate: '' });
     setEditingId(null);
     setDialogOpen(true);
   };
 
   const openEdit = (teacher: Teacher) => {
-    setForm({ name: teacher.name, phone: teacher.phone, level: teacher.level });
+    setForm({ name: teacher.name, phone: teacher.phone, level: teacher.level, idCard: teacher.idCard ?? '', joinDate: teacher.joinDate ?? '' });
     setEditingId(teacher.id);
     setDialogOpen(true);
   };
@@ -65,10 +65,10 @@ export default function TeacherManagement({ teachers, onAdd, onUpdate, onDelete 
     if (!form.level) { toast.error('请选择老师等级'); return; }
 
     if (editingId) {
-      onUpdate(editingId, { name: form.name.trim(), phone: form.phone.trim(), level: form.level });
+      onUpdate(editingId, { name: form.name.trim(), phone: form.phone.trim(), level: form.level, idCard: form.idCard.trim() || undefined, joinDate: form.joinDate || undefined });
       toast.success('老师信息已更新');
     } else {
-      onAdd({ name: form.name.trim(), phone: form.phone.trim(), level: form.level });
+      onAdd({ name: form.name.trim(), phone: form.phone.trim(), level: form.level, idCard: form.idCard.trim() || undefined, joinDate: form.joinDate || undefined });
       toast.success('老师添加成功');
     }
     setDialogOpen(false);
@@ -110,13 +110,14 @@ export default function TeacherManagement({ teachers, onAdd, onUpdate, onDelete 
                 <TableHead>姓名</TableHead>
                 <TableHead>联系方式</TableHead>
                 <TableHead>老师等级</TableHead>
+                <TableHead>入职时间</TableHead>
                 <TableHead className="text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-16 text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center py-16 text-muted-foreground">
                     <GraduationCap className="w-12 h-12 mx-auto mb-3 opacity-30" />
                     {search ? '未找到匹配的老师' : '暂无老师数据，点击「添加老师」开始'}
                   </TableCell>
@@ -136,6 +137,9 @@ export default function TeacherManagement({ teachers, onAdd, onUpdate, onDelete 
                       <span className={cn('inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border', TEACHER_LEVELS[teacher.level].color)}>
                         {TEACHER_LEVELS[teacher.level].label}
                       </span>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground tabular-nums text-sm">
+                      {teacher.joinDate || '—'}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
@@ -212,8 +216,35 @@ export default function TeacherManagement({ teachers, onAdd, onUpdate, onDelete 
                       C级（初级教师）
                     </span>
                   </SelectItem>
+                  <SelectItem value="D">
+                    <span className="flex items-center gap-2">
+                      <span className={cn('inline-block w-2 h-2 rounded-full', 'bg-slate-500')} />
+                      D级（兼职教师）
+                    </span>
+                  </SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="t-idcard">身份证号</Label>
+                <Input
+                  id="t-idcard"
+                  placeholder="请输入身份证号"
+                  value={form.idCard}
+                  onChange={(e) => setForm({ ...form, idCard: e.target.value })}
+                  maxLength={18}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="t-joindate">入职时间</Label>
+                <Input
+                  id="t-joindate"
+                  type="date"
+                  value={form.joinDate}
+                  onChange={(e) => setForm({ ...form, joinDate: e.target.value })}
+                />
+              </div>
             </div>
             <DialogFooter className="pt-4">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>取消</Button>

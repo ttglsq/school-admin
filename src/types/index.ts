@@ -1,6 +1,6 @@
 // 数据类型定义
 
-export type TeacherLevel = 'A' | 'B' | 'C';
+export type TeacherLevel = 'A' | 'B' | 'C' | 'D';
 
 export type ClassLevel = 'A' | 'B' | 'C';
 
@@ -11,6 +11,8 @@ export interface Teacher {
   name: string;
   phone: string;
   level: TeacherLevel;
+  idCard?: string;    // 身份证号（可选，兼容旧数据）
+  joinDate?: string;  // 入职时间 "YYYY-MM-DD"（可选，兼容旧数据）
   createdAt: string;
 }
 
@@ -100,6 +102,7 @@ export const TEACHER_LEVELS: Record<TeacherLevel, { label: string; color: string
   A: { label: 'A级', color: 'bg-red-100 text-red-700 border-red-200' },
   B: { label: 'B级', color: 'bg-amber-100 text-amber-700 border-amber-200' },
   C: { label: 'C级', color: 'bg-green-100 text-green-700 border-green-200' },
+  D: { label: 'D级', color: 'bg-slate-100 text-slate-700 border-slate-200' },
 };
 
 // 班级等级配置
@@ -161,7 +164,21 @@ export const MANAGEMENT_FEE: Record<TeacherLevel, Record<ClassDuration, number>>
   // 老师B级、C级：2课时140/月，3课时180/月，4课时200/月
   B: { A: 140, B: 180, C: 200 },
   C: { A: 140, B: 180, C: 200 },
+  // 老师D级（兼职）：无管理费
+  D: { A: 0, B: 0, C: 0 },
 };
+
+// ===== D级（兼职）老师计费 =====
+
+/** 兼职老师每学生每次课金额（元） */
+export const PART_TIME_PER_STUDENT = 20;
+/** 兼职老师每班每次课保底金额（元） */
+export const PART_TIME_CLASS_MIN = 60;
+
+/** 判断老师等级是否为 D 级兼职 */
+export function isPartTimeTeacher(level: TeacherLevel): boolean {
+  return level === 'D';
+}
 
 // 生成唯一ID
 export const generateId = (): string => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;

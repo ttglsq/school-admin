@@ -352,7 +352,7 @@ function OverviewPage(
   const { teachers, classes, students, campuses, onNavigate, canAccess } = props;
 
   // 统计数据
-  const teacherLevelCount = { A: 0, B: 0, C: 0 };
+  const teacherLevelCount = { A: 0, B: 0, C: 0, D: 0 };
   teachers.forEach(t => teacherLevelCount[t.level]++);
 
   const classLevelCount = { A: 0, B: 0, C: 0 };
@@ -375,7 +375,7 @@ function OverviewPage(
       icon: GraduationCap,
       gradient: 'from-blue-500 to-blue-600',
       page: 'teachers' as PageId,
-      detail: `A: ${teacherLevelCount.A}  B: ${teacherLevelCount.B}  C: ${teacherLevelCount.C}`,
+      detail: `A: ${teacherLevelCount.A}  B: ${teacherLevelCount.B}  C: ${teacherLevelCount.C}  D: ${teacherLevelCount.D}`,
     },
     {
       label: '班级总数',
@@ -444,7 +444,7 @@ function OverviewPage(
               老师等级分布
             </h3>
             <div className="space-y-3">
-              {(['A', 'B', 'C'] as const).map(level => (
+              {(['A', 'B', 'C', 'D'] as const).map(level => (
                 <div key={level} className="flex items-center gap-3">
                   <span className={cn('text-xs font-medium px-2.5 py-1 rounded-md border', TEACHER_LEVELS[level].color)}>
                     {TEACHER_LEVELS[level].label}

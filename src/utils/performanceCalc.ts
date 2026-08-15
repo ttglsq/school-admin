@@ -5,6 +5,7 @@ import type {
 import {
   SALARY_LEVELS, HEARING_DURATION_MULTIPLIER, BC_HEARING_DIVISOR,
   RETELL_UNIT_PRICE, MANAGEMENT_FEE, WEEKS_PER_MONTH,
+  PART_TIME_PER_STUDENT, PART_TIME_CLASS_MIN, isPartTimeTeacher,
 } from '@/types';
 
 /** 老师等级 → 听力系数表 key */
@@ -95,6 +96,10 @@ export interface ClassPerformanceResult {
   retellWage: number;
   // 班级管理费
   managementFee: number;
+  // D级兼职工资（非D级为0）
+  partTimeWage: number;
+  // 班级学生数
+  studentCount: number;
   // 合计
   total: number;
 }
@@ -107,14 +112,38 @@ export function calculateClassPerformance(
   salaryData: SalaryStandardData,
 ): ClassPerformanceResult {
   const teacherLevel = teacher?.level ?? 'C';
+  const classStudents = students.filter(s => s.classId === cls.id);
+  const studentCount = classStudents.length;
+
+  // D级兼职老师：按学生人次计费，每班每次课保底，无听力/复述/管理费
+  if (isPartTimeTeacher(teacherLevel)) {
+    const perLesson = Math.max(studentCount * PART_TIME_PER_STUDENT, PART_TIME_CLASS_MIN);
+    const partTimeWage = perLesson * WEEKS_PER_MONTH;
+    return {
+      classId: cls.id,
+      className: cls.name,
+      classLevel: cls.level,
+      duration: cls.duration,
+      teacherLevel,
+      coeffKey: '0.3', // 占位，D级不查表
+      hearingDetails: [],
+      hearingWage: 0,
+      retellCount: 0,
+      retellUnitPrice: 0,
+      retellWage: 0,
+      managementFee: 0,
+      partTimeWage,
+      studentCount,
+      total: partTimeWage,
+    };
+  }
+
   const coeffKey = teacherLevelToCoeffKey(teacherLevel);
   const table = salaryData[coeffKey] || [];
   const multiplier = getDurationMultiplier(cls.level, cls.duration);
   const isBC = isBCClass(cls.level);
   const retellPrice = getRetellUnitPrice(cls.duration);
   const mgmtFee = getManagementFee(teacherLevel, cls.duration);
-
-  const classStudents = students.filter(s => s.classId === cls.id);
 
   // 学生 -> (周 -> 记录)
   const recordMap = new Map<string, Map<number, StudentMonthlyRecord>>();
@@ -186,6 +215,8 @@ export function calculateClassPerformance(
     retellUnitPrice: retellPrice,
     retellWage,
     managementFee: mgmtFee,
+    partTimeWage: 0,
+    studentCount,
     total,
   };
 }
@@ -200,6 +231,7 @@ export interface TeacherPerformanceResult {
   hearingWage: number;
   retellWage: number;
   managementFee: number;
+  partTimeWage: number;
   total: number;
   classes: ClassPerformanceResult[];
 }
@@ -219,6 +251,7 @@ export function calculateTeacherPerformance(
   const hearingWage = classResults.reduce((s, c) => s + c.hearingWage, 0);
   const retellWage = classResults.reduce((s, c) => s + c.retellWage, 0);
   const managementFee = classResults.reduce((s, c) => s + c.managementFee, 0);
+  const partTimeWage = classResults.reduce((s, c) => s + c.partTimeWage, 0);
 
   return {
     teacherId: teacher.id,
@@ -228,7 +261,8 @@ export function calculateTeacherPerformance(
     hearingWage,
     retellWage,
     managementFee,
-    total: hearingWage + retellWage + managementFee,
+    partTimeWage,
+    total: hearingWage + retellWage + managementFee + partTimeWage,
     classes: classResults,
   };
 }

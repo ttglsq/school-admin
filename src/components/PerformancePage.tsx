@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import type { Teacher, ClassInfo, Student, SalaryStandardData, StudentMonthlyRecord } from '@/types';
-import { TEACHER_LEVELS, CLASS_LEVELS, CLASS_DURATIONS, WEEKS_PER_MONTH, BC_HEARING_DIVISOR } from '@/types';
+import { TEACHER_LEVELS, CLASS_LEVELS, CLASS_DURATIONS, WEEKS_PER_MONTH, BC_HEARING_DIVISOR, PART_TIME_PER_STUDENT, PART_TIME_CLASS_MIN, isPartTimeTeacher } from '@/types';
 import {
   calculateTeacherPerformance,
   teacherLevelToCoeffKey,
@@ -123,7 +123,7 @@ export default function PerformancePage(props: PerformancePageProps) {
               </div>
               {selectedTeacher && (
                 <Badge variant="outline" className={cn('border', TEACHER_LEVELS[selectedTeacher.level].color)}>
-                  {TEACHER_LEVELS[selectedTeacher.level].label} · 系数 {teacherLevelToCoeffKey(selectedTeacher.level)}
+                  {TEACHER_LEVELS[selectedTeacher.level].label}{isPartTimeTeacher(selectedTeacher.level) ? ' · 兼职' : ` · 系数 ${teacherLevelToCoeffKey(selectedTeacher.level)}`}
                 </Badge>
               )}
               {selectedTeacher && (
@@ -151,7 +151,33 @@ export default function PerformancePage(props: PerformancePageProps) {
           ) : (
             <>
               {/* 班级列表 */}
-              {teacherPerf.classes.map(clsPerf => (
+              {teacherPerf.classes.map(clsPerf => {
+                if (isPartTimeTeacher(clsPerf.teacherLevel)) {
+                  // ===== D级兼职班级卡片 =====
+                  return (
+                    <Card key={clsPerf.classId} className="overflow-hidden">
+                      <div className="flex items-center justify-between px-4 py-3 bg-muted/30">
+                        <div className="flex items-center gap-3">
+                          <School className="w-4 h-4 text-purple-600" />
+                          <span className="font-medium">{clsPerf.className}</span>
+                          <Badge variant="outline" className="border-slate-200 bg-slate-100 text-slate-700">
+                            兼职计费
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">{clsPerf.studentCount} 名学生</span>
+                        </div>
+                        <div className="flex items-center gap-4 text-sm">
+                          <span className="text-muted-foreground">兼职工资 <span className="font-bold text-blue-600">¥{clsPerf.partTimeWage.toFixed(2)}</span></span>
+                        </div>
+                      </div>
+                      <div className="px-4 py-3 text-sm text-muted-foreground space-y-1">
+                        <p>计费规则：每学生每次课 ¥{PART_TIME_PER_STUDENT}，每班每次课保底 ¥{PART_TIME_CLASS_MIN}，每月按 {WEEKS_PER_MONTH} 周计</p>
+                        <p>本月计算：max({clsPerf.studentCount}人 × ¥{PART_TIME_PER_STUDENT}, ¥{PART_TIME_CLASS_MIN}) × {WEEKS_PER_MONTH}周 = max(¥{(clsPerf.studentCount * PART_TIME_PER_STUDENT).toFixed(0)}, ¥{PART_TIME_CLASS_MIN}) × {WEEKS_PER_MONTH} = <span className="font-semibold text-foreground">¥{clsPerf.partTimeWage.toFixed(2)}</span></p>
+                      </div>
+                    </Card>
+                  );
+                }
+                // ===== A/B/C 级班级卡片 =====
+                return (
                 <Card key={clsPerf.classId} className="overflow-hidden">
                   {/* 班级头 */}
                   <div className="flex items-center justify-between px-4 py-3 bg-muted/30">
@@ -250,7 +276,8 @@ export default function PerformancePage(props: PerformancePageProps) {
                     <span>班级合计: <span className="font-bold text-blue-600">¥{clsPerf.total.toFixed(2)}</span></span>
                   </div>
                 </Card>
-              ))}
+                );
+              })}
 
               {/* 老师合计 */}
               <Card className="border-blue-300 bg-blue-50/50">
@@ -260,9 +287,15 @@ export default function PerformancePage(props: PerformancePageProps) {
                     <span className="font-bold text-blue-900">{selectedTeacher.name} 月度绩效合计</span>
                   </div>
                   <div className="flex items-center gap-6 text-sm">
-                    <span className="text-blue-800">听力工资 <span className="font-bold">¥{teacherPerf.hearingWage.toFixed(2)}</span></span>
-                    <span className="text-blue-800">复述工资 <span className="font-bold">¥{teacherPerf.retellWage.toFixed(2)}</span></span>
-                    <span className="text-blue-800">管理费 <span className="font-bold">¥{teacherPerf.managementFee.toFixed(2)}</span></span>
+                    {isPartTimeTeacher(teacherPerf.teacherLevel) ? (
+                      <span className="text-blue-800">兼职工资 <span className="font-bold">¥{teacherPerf.partTimeWage.toFixed(2)}</span></span>
+                    ) : (
+                      <>
+                        <span className="text-blue-800">听力工资 <span className="font-bold">¥{teacherPerf.hearingWage.toFixed(2)}</span></span>
+                        <span className="text-blue-800">复述工资 <span className="font-bold">¥{teacherPerf.retellWage.toFixed(2)}</span></span>
+                        <span className="text-blue-800">管理费 <span className="font-bold">¥{teacherPerf.managementFee.toFixed(2)}</span></span>
+                      </>
+                    )}
                     <span className="text-blue-900 text-base">总计 <span className="font-bold">¥{teacherPerf.total.toFixed(2)}</span></span>
                   </div>
                 </CardContent>
@@ -277,6 +310,7 @@ export default function PerformancePage(props: PerformancePageProps) {
                       <p>听力工资 = 每周 查表y(元/周) × 时长系数 之和（每月按 {WEEKS_PER_MONTH} 周录入）｜ A初级班: 2课时÷3×2, 3课时÷3×4, 4课时÷3×4 ｜ B/C班: 2课时÷3×2, 3课时÷3×4, 4课时÷3×4, 得出数据再÷{BC_HEARING_DIVISOR}（先除再乘）</p>
                       <p>任一单周听力数据低于最低档位（{minHearingX} 分钟/周）时，按最低档位计薪（查表y 取最小挡位值，标注「↓最低档」）；未录入听力数据的周不计薪</p>
                       <p>复述工资: 3课时 ¥3/人次, 4课时 ¥4/人次, 2课时无 ｜ 班级管理费: A级老师 2课时¥160/3课时¥200/4课时¥220, B/C级老师 2课时¥140/3课时¥180/4课时¥200</p>
+                      <p>D级兼职老师：无听力/复述/管理费考核，按学生人次计薪 —— 每学生每次课 ¥{PART_TIME_PER_STUDENT}，每班每次课保底 ¥{PART_TIME_CLASS_MIN}，月工资 = max(学生数 × ¥{PART_TIME_PER_STUDENT}, ¥{PART_TIME_CLASS_MIN}) × {WEEKS_PER_MONTH}周</p>
                     </div>
                   </div>
                 </CardContent>
@@ -300,13 +334,14 @@ export default function PerformancePage(props: PerformancePageProps) {
                 <TableHead className="text-right">听力工资</TableHead>
                 <TableHead className="text-right">复述工资</TableHead>
                 <TableHead className="text-right">管理费</TableHead>
+                <TableHead className="text-right">兼职工资</TableHead>
                 <TableHead className="text-right">合计</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {allTeacherPerfs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                     暂无老师数据
                   </TableCell>
                 </TableRow>
@@ -320,9 +355,10 @@ export default function PerformancePage(props: PerformancePageProps) {
                     </TableCell>
                     <TableCell className="font-medium">{tp.teacherName}</TableCell>
                     <TableCell className="text-center tabular-nums">{tp.classCount}</TableCell>
-                    <TableCell className="text-right tabular-nums">¥{tp.hearingWage.toFixed(2)}</TableCell>
-                    <TableCell className="text-right tabular-nums">¥{tp.retellWage.toFixed(2)}</TableCell>
-                    <TableCell className="text-right tabular-nums">¥{tp.managementFee.toFixed(2)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{isPartTimeTeacher(tp.teacherLevel) ? '—' : `¥${tp.hearingWage.toFixed(2)}`}</TableCell>
+                    <TableCell className="text-right tabular-nums">{isPartTimeTeacher(tp.teacherLevel) ? '—' : `¥${tp.retellWage.toFixed(2)}`}</TableCell>
+                    <TableCell className="text-right tabular-nums">{isPartTimeTeacher(tp.teacherLevel) ? '—' : `¥${tp.managementFee.toFixed(2)}`}</TableCell>
+                    <TableCell className="text-right tabular-nums">{isPartTimeTeacher(tp.teacherLevel) ? `¥${tp.partTimeWage.toFixed(2)}` : '—'}</TableCell>
                     <TableCell className="text-right font-bold tabular-nums text-blue-600">¥{tp.total.toFixed(2)}</TableCell>
                   </TableRow>
                 ))

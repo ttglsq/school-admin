@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import type { Teacher, ClassInfo, Student, StudentMonthlyRecord } from '@/types';
-import { WEEKS_PER_MONTH } from '@/types';
+import { WEEKS_PER_MONTH, isPartTimeTeacher } from '@/types';
 
 interface PerformanceEntryPageProps {
   teachers: Teacher[];
@@ -41,6 +41,7 @@ export default function PerformanceEntryPage(props: PerformanceEntryPageProps) {
   const [dirty, setDirty] = useState(false);
 
   const { teachers, classes, students, monthlyRecords } = props;
+  const selectedTeacher = teachers.find(t => t.id === selectedTeacherId);
 
   const teacherClasses = useMemo(
     () => classes.filter(c => c.teacherId === selectedTeacherId),
@@ -211,6 +212,15 @@ export default function PerformanceEntryPage(props: PerformanceEntryPageProps) {
           <CardContent className="p-12 text-center text-muted-foreground">
             <ClipboardList className="w-12 h-12 mx-auto mb-3 opacity-40" />
             <p>请选择老师与周次，开始录入听力数据与复述完成情况</p>
+          </CardContent>
+        </Card>
+      ) : selectedTeacher && isPartTimeTeacher(selectedTeacher.level) ? (
+        <Card>
+          <CardContent className="p-12 text-center text-muted-foreground">
+            <GraduationCap className="w-12 h-12 mx-auto mb-3 opacity-40" />
+            <p className="font-medium text-foreground mb-1">该老师为 D 级兼职教师</p>
+            <p>兼职老师无需录入听力/复述数据，系统按班级学生人数自动计薪</p>
+            <p className="text-xs mt-2">计薪规则：每学生每次课 ¥20，每班每次课保底 ¥60，每月按 {WEEKS_PER_MONTH} 周计</p>
           </CardContent>
         </Card>
       ) : teacherClasses.length === 0 ? (
