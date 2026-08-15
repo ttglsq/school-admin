@@ -42,6 +42,7 @@ export default function TeacherManagement({ teachers, onAdd, onUpdate, onDelete 
     return teachers.filter(t =>
       t.name.toLowerCase().includes(q) ||
       t.phone.includes(q) ||
+      (t.idCard && t.idCard.includes(q)) ||
       TEACHER_LEVELS[t.level].label.toLowerCase().includes(q)
     );
   }, [teachers, search]);
@@ -109,6 +110,7 @@ export default function TeacherManagement({ teachers, onAdd, onUpdate, onDelete 
                 <TableHead className="w-12 text-center">#</TableHead>
                 <TableHead>姓名</TableHead>
                 <TableHead>联系方式</TableHead>
+                <TableHead>身份证号</TableHead>
                 <TableHead>老师等级</TableHead>
                 <TableHead>入职时间</TableHead>
                 <TableHead className="text-right">操作</TableHead>
@@ -117,7 +119,7 @@ export default function TeacherManagement({ teachers, onAdd, onUpdate, onDelete 
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-16 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-16 text-muted-foreground">
                     <GraduationCap className="w-12 h-12 mx-auto mb-3 opacity-30" />
                     {search ? '未找到匹配的老师' : '暂无老师数据，点击「添加老师」开始'}
                   </TableCell>
@@ -132,6 +134,9 @@ export default function TeacherManagement({ teachers, onAdd, onUpdate, onDelete 
                         <Phone className="w-3.5 h-3.5" />
                         {teacher.phone}
                       </span>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm tabular-nums">
+                      {teacher.idCard || '—'}
                     </TableCell>
                     <TableCell>
                       <span className={cn('inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border', TEACHER_LEVELS[teacher.level].color)}>

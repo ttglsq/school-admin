@@ -311,6 +311,7 @@ export default function ClassManagement({ classes, teachers, students, campuses,
                   <SelectItem value="A">A 2课时</SelectItem>
                   <SelectItem value="B">B 3课时</SelectItem>
                   <SelectItem value="C">C 4课时</SelectItem>
+                  <SelectItem value="D">D 1课时</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -375,5 +376,5 @@ export default function ClassManagement({ classes, teachers, students, campuses,
 }
 
 function TEACHER_LEVEL_LABEL(level: string) {
-  return level === 'A' ? 'A级' : level === 'B' ? 'B级' : 'C级';
+  return level === 'A' ? 'A级' : level === 'B' ? 'B级' : level === 'C' ? 'C级' : 'D级';
 }

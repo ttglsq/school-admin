@@ -106,11 +106,12 @@ export default function ClassDetailDialog({ open, onOpenChange, cls, teacher, ca
                   <SelectTrigger>
                     <SelectValue placeholder="请选择上课时长" />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="A">A 2课时</SelectItem>
-                    <SelectItem value="B">B 3课时</SelectItem>
-                    <SelectItem value="C">C 4课时</SelectItem>
-                  </SelectContent>
+                <SelectContent>
+                  <SelectItem value="A">A 2课时</SelectItem>
+                  <SelectItem value="B">B 3课时</SelectItem>
+                  <SelectItem value="C">C 4课时</SelectItem>
+                  <SelectItem value="D">D 1课时</SelectItem>
+                </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">

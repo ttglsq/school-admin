@@ -5,7 +5,7 @@ import type {
 import {
   SALARY_LEVELS, HEARING_DURATION_MULTIPLIER, BC_HEARING_DIVISOR,
   RETELL_UNIT_PRICE, MANAGEMENT_FEE, WEEKS_PER_MONTH,
-  PART_TIME_PER_STUDENT, PART_TIME_CLASS_MIN, isPartTimeTeacher,
+  getPartTimePerStudent, getPartTimeMinFee, isPartTimeTeacher,
 } from '@/types';
 
 /** 老师等级 → 听力系数表 key */
@@ -55,9 +55,9 @@ export function isBCClass(classLevel: ClassLevel): boolean {
   return classLevel === 'B' || classLevel === 'C';
 }
 
-/** 课时数（2/3/4） */
+/** 课时数（1/2/3/4） */
 export function durationToHours(d: ClassDuration): number {
-  return d === 'A' ? 2 : d === 'B' ? 3 : 4;
+  return d === 'D' ? 1 : d === 'A' ? 2 : d === 'B' ? 3 : 4;
 }
 
 // ===== 班级绩效计算 =====
@@ -115,9 +115,11 @@ export function calculateClassPerformance(
   const classStudents = students.filter(s => s.classId === cls.id);
   const studentCount = classStudents.length;
 
-  // D级兼职老师：按学生人次计费，每班每次课保底，无听力/复述/管理费
+  // D级兼职老师：按学生人次计费，与课时挂钩，无听力/复述/管理费
   if (isPartTimeTeacher(teacherLevel)) {
-    const perLesson = Math.max(studentCount * PART_TIME_PER_STUDENT, PART_TIME_CLASS_MIN);
+    const perStudent = getPartTimePerStudent(cls.duration);
+    const minFee = getPartTimeMinFee(cls.duration);
+    const perLesson = Math.max(studentCount * perStudent, minFee);
     const partTimeWage = perLesson * WEEKS_PER_MONTH;
     return {
       classId: cls.id,

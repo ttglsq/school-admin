@@ -219,8 +219,8 @@ export default function PerformanceEntryPage(props: PerformanceEntryPageProps) {
           <CardContent className="p-12 text-center text-muted-foreground">
             <GraduationCap className="w-12 h-12 mx-auto mb-3 opacity-40" />
             <p className="font-medium text-foreground mb-1">该老师为 D 级兼职教师</p>
-            <p>兼职老师无需录入听力/复述数据，系统按班级学生人数自动计薪</p>
-            <p className="text-xs mt-2">计薪规则：每学生每次课 ¥20，每班每次课保底 ¥60，每月按 {WEEKS_PER_MONTH} 周计</p>
+            <p>兼职老师无需录入听力/复述数据，系统按班级学生人数与课时自动计薪</p>
+            <p className="text-xs mt-2">计薪规则：1课时班级保底¥60/每生¥20，2课时班级保底¥120/每生¥40，3/4课时班级保底¥180/每生¥60；≤3学生按保底，超出按实际人数×单价，每月按 {WEEKS_PER_MONTH} 周计</p>
           </CardContent>
         </Card>
       ) : teacherClasses.length === 0 ? (

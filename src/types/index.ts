@@ -4,7 +4,7 @@ export type TeacherLevel = 'A' | 'B' | 'C' | 'D';
 
 export type ClassLevel = 'A' | 'B' | 'C';
 
-export type ClassDuration = 'A' | 'B' | 'C';
+export type ClassDuration = 'A' | 'B' | 'C' | 'D';
 
 export interface Teacher {
   id: string;
@@ -117,6 +117,7 @@ export const CLASS_DURATIONS: Record<ClassDuration, { label: string; shortLabel:
   A: { label: 'A 2课时', shortLabel: '2课时', color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
   B: { label: 'B 3课时', shortLabel: '3课时', color: 'bg-cyan-100 text-cyan-700 border-cyan-200' },
   C: { label: 'C 4课时', shortLabel: '4课时', color: 'bg-orange-100 text-orange-700 border-orange-200' },
+  D: { label: 'D 1课时', shortLabel: '1课时', color: 'bg-gray-100 text-gray-700 border-gray-200' },
 };
 
 // ===== 月度绩效考核 =====
@@ -137,14 +138,14 @@ export const WEEKS_PER_MONTH = 4;
 
 /**
  * 听力数据工资 — 时长系数
- * key = 班级等级(A初级/B入门/C启蒙)，value 按课时时长(2/3/4)给出乘数
+ * key = 班级等级(A初级/B入门/C启蒙)，value 按课时时长(1/2/3/4)给出乘数
  * 乘数含义：系数(查表y) × 乘数
  */
 export const HEARING_DURATION_MULTIPLIER: Record<ClassLevel, Record<ClassDuration, number>> = {
-  // A初级/B入门/C启蒙班统一：2课时÷3×2（×2/3），3课时÷3×4（×4/3），4课时÷3×4（×4/3）—— 先除再乘
-  A: { A: 2 / 3, B: 4 / 3, C: 4 / 3 },
-  B: { A: 2 / 3, B: 4 / 3, C: 4 / 3 },
-  C: { A: 2 / 3, B: 4 / 3, C: 4 / 3 },
+  // A初级/B入门/C启蒙班统一：1课时÷3×1(×1/3)，2课时÷3×2(×2/3)，3课时÷3×4(×4/3)，4课时÷3×4(×4/3)—— 先除再乘
+  A: { A: 2 / 3, B: 4 / 3, C: 4 / 3, D: 1 / 3 },
+  B: { A: 2 / 3, B: 4 / 3, C: 4 / 3, D: 1 / 3 },
+  C: { A: 2 / 3, B: 4 / 3, C: 4 / 3, D: 1 / 3 },
 };
 
 /** B/C 班听力工资需额外 ÷0.9 */
@@ -155,25 +156,33 @@ export const RETELL_UNIT_PRICE: Record<ClassDuration, number> = {
   A: 0, // 2课时无复述工资
   B: 3, // 3课时 3元/人
   C: 4, // 4课时 4元/人
+  D: 0, // 1课时无复述工资
 };
 
 /** 班级管理费（元/月），按老师等级 × 课时时长 */
 export const MANAGEMENT_FEE: Record<TeacherLevel, Record<ClassDuration, number>> = {
-  // 老师A级：2课时160/月，3课时200/月，4课时220/月
-  A: { A: 160, B: 200, C: 220 },
-  // 老师B级、C级：2课时140/月，3课时180/月，4课时200/月
-  B: { A: 140, B: 180, C: 200 },
-  C: { A: 140, B: 180, C: 200 },
+  // 老师A级：1课时0/月，2课时160/月，3课时200/月，4课时220/月（1课时暂无标准，按0计）
+  A: { A: 160, B: 200, C: 220, D: 0 },
+  // 老师B级、C级：1课时0/月，2课时140/月，3课时180/月，4课时200/月（1课时暂无标准，按0计）
+  B: { A: 140, B: 180, C: 200, D: 0 },
+  C: { A: 140, B: 180, C: 200, D: 0 },
   // 老师D级（兼职）：无管理费
-  D: { A: 0, B: 0, C: 0 },
+  D: { A: 0, B: 0, C: 0, D: 0 },
 };
 
 // ===== D级（兼职）老师计费 =====
 
-/** 兼职老师每学生每次课金额（元） */
-export const PART_TIME_PER_STUDENT = 20;
-/** 兼职老师每班每次课保底金额（元） */
-export const PART_TIME_CLASS_MIN = 60;
+/** 兼职老师每周每学生单价（按课时时长，元/人） */
+export function getPartTimePerStudent(duration: ClassDuration): number {
+  const hours = duration === 'A' ? 2 : duration === 'B' ? 3 : duration === 'C' ? 4 : 1;
+  return Math.min(hours, 3) * 20;
+}
+
+/** 兼职老师每班每周保底金额（按课时时长，元） */
+export function getPartTimeMinFee(duration: ClassDuration): number {
+  const hours = duration === 'A' ? 2 : duration === 'B' ? 3 : duration === 'C' ? 4 : 1;
+  return Math.min(hours, 3) * 60;
+}
 
 /** 判断老师等级是否为 D 级兼职 */
 export function isPartTimeTeacher(level: TeacherLevel): boolean {
