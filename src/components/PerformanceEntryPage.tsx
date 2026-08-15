@@ -56,14 +56,12 @@ export default function PerformanceEntryPage(props: PerformanceEntryPageProps) {
   // 该老师某周是否已有已保存记录（用于周标签上的圆点提示）
   const weekHasData = useCallback((w: number): boolean => {
     if (!selectedTeacherId) return false;
-    // 出勤记录（所有等级老师通用）
-    const hasAttendance = partTimeRecords.some(r => r.yearMonth === yearMonth && r.week === w && classIds.has(r.classId));
     if (selectedTeacher && isPartTimeTeacher(selectedTeacher.level)) {
-      return hasAttendance;
+      // D级兼职：看出勤记录
+      return partTimeRecords.some(r => r.yearMonth === yearMonth && r.week === w && classIds.has(r.classId));
     }
-    // ABC等级：有学生数据或出勤记录都算已录入
-    const hasStudentData = monthlyRecords.some(r => r.yearMonth === yearMonth && r.week === w && classIds.has(r.classId));
-    return hasStudentData || hasAttendance;
+    // ABC级：看学生数据
+    return monthlyRecords.some(r => r.yearMonth === yearMonth && r.week === w && classIds.has(r.classId));
   }, [selectedTeacherId, selectedTeacher, monthlyRecords, partTimeRecords, yearMonth, classIds]);
 
   // 加载某月某周某老师的记录到编辑区
@@ -72,17 +70,15 @@ export default function PerformanceEntryPage(props: PerformanceEntryPageProps) {
     const cIds = new Set(tClasses.map(c => c.id));
     const teacher = teachers.find(t => t.id === teacherId);
 
-    // 加载出勤记录（所有等级老师通用）
-    const existingAttendance = partTimeRecords.filter(r => r.yearMonth === ym && r.week === wk && cIds.has(r.classId));
-    const attMap: Record<string, boolean> = {};
-    for (const cls of tClasses) {
-      const rec = existingAttendance.find(r => r.classId === cls.id);
-      attMap[cls.id] = rec?.attended ?? false;
-    }
-    setPartTimeEditMap(attMap);
-
     if (teacher && isPartTimeTeacher(teacher.level)) {
-      // D级兼职：无学生数据，只保留出勤
+      // D级兼职：只加载出勤记录
+      const existing = partTimeRecords.filter(r => r.yearMonth === ym && r.week === wk && cIds.has(r.classId));
+      const map: Record<string, boolean> = {};
+      for (const cls of tClasses) {
+        const rec = existing.find(r => r.classId === cls.id);
+        map[cls.id] = rec?.attended ?? false;
+      }
+      setPartTimeEditMap(map);
       setDirty(false);
       return;
     }
@@ -132,21 +128,20 @@ export default function PerformanceEntryPage(props: PerformanceEntryPageProps) {
     if (!selectedTeacherId) return;
     const teacher = teachers.find(t => t.id === selectedTeacherId);
 
-    // 所有等级老师都保存出勤记录
-    const attendanceRecords: PartTimeWeeklyRecord[] = [];
-    for (const cls of teacherClasses) {
-      attendanceRecords.push({
-        id: `${yearMonth}-w${week}-${cls.id}`,
-        teacherId: selectedTeacherId,
-        classId: cls.id,
-        yearMonth,
-        week,
-        attended: partTimeEditMap[cls.id] ?? false,
-      });
-    }
-    props.onSavePartTimeRecords(yearMonth, week, attendanceRecords);
-
     if (teacher && isPartTimeTeacher(teacher.level)) {
+      // D级兼职：保存出勤记录
+      const records: PartTimeWeeklyRecord[] = [];
+      for (const cls of teacherClasses) {
+        records.push({
+          id: `${yearMonth}-w${week}-${cls.id}`,
+          teacherId: selectedTeacherId,
+          classId: cls.id,
+          yearMonth,
+          week,
+          attended: partTimeEditMap[cls.id] ?? false,
+        });
+      }
+      props.onSavePartTimeRecords(yearMonth, week, records);
       setDirty(false);
       toast.success(`${yearMonth} 第${week}周兼职出勤记录已保存`);
       return;
@@ -329,27 +324,17 @@ export default function PerformanceEntryPage(props: PerformanceEntryPageProps) {
             return (
               <Card key={cls.id} className="overflow-hidden">
                 {/* 班级头（仅显示班级名，不显示等级/课时等薪资相关信息） */}
-                <div className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors">
-                  <button
-                    onClick={() => toggleClass(cls.id)}
-                    className="flex items-center gap-3 flex-1 text-left"
-                  >
+                <button
+                  onClick={() => toggleClass(cls.id)}
+                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
                     {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                     <School className="w-4 h-4 text-purple-600" />
                     <span className="font-medium">{cls.name}</span>
                     <span className="text-xs text-muted-foreground">{classStudents.length} 名学生</span>
-                  </button>
-                  <div className="flex items-center gap-2 ml-2">
-                    <Checkbox
-                      id={`att-${cls.id}`}
-                      checked={partTimeEditMap[cls.id] ?? false}
-                      onCheckedChange={(v) => updatePartTimeAttendance(cls.id, v === true)}
-                    />
-                    <label htmlFor={`att-${cls.id}`} className="text-sm font-medium cursor-pointer select-none">
-                      本周上课
-                    </label>
                   </div>
-                </div>
+                </button>
 
                 {/* 学生录入表格 */}
                 {expanded && (

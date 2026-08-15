@@ -152,13 +152,8 @@ export function calculateClassPerformance(
   const multiplier = getDurationMultiplier(cls.level, cls.duration);
   const isBC = isBCClass(cls.level);
   const retellPrice = getRetellUnitPrice(cls.duration);
-  const baseMgmtFee = getManagementFee(teacherLevel, cls.duration);
-
-  // 按实际出勤周数计算管理费（只有打勾的周数才计入）
-  const attendedWeeks = partTimeRecords.filter(
-    r => r.classId === cls.id && r.yearMonth === yearMonth && r.attended
-  ).length;
-  const mgmtFee = baseMgmtFee * attendedWeeks / WEEKS_PER_MONTH;
+  // 班级管理费：按月固定发放（不按出勤周数计算）
+  const mgmtFee = getManagementFee(teacherLevel, cls.duration);
 
   // 学生 -> (周 -> 记录)
   const recordMap = new Map<string, Map<number, StudentMonthlyRecord>>();

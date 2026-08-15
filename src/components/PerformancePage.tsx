@@ -204,7 +204,7 @@ export default function PerformancePage(props: PerformancePageProps) {
                     <div className="flex items-center gap-4 text-sm">
                       <span className="text-muted-foreground">听力 <span className="font-semibold text-foreground">¥{clsPerf.hearingWage.toFixed(2)}</span></span>
                       <span className="text-muted-foreground">复述 <span className="font-semibold text-foreground">¥{clsPerf.retellWage.toFixed(2)}</span></span>
-                      <span className="text-muted-foreground">管理费 <span className="font-semibold text-foreground">¥{clsPerf.managementFee.toFixed(2)}</span></span>
+                      <span className="text-muted-foreground">管理费 <span className="font-semibold text-foreground">¥{clsPerf.managementFee}</span></span>
                       <span className="text-muted-foreground">合计 <span className="font-bold text-blue-600">¥{clsPerf.total.toFixed(2)}</span></span>
                     </div>
                   </div>
@@ -279,7 +279,7 @@ export default function PerformancePage(props: PerformancePageProps) {
                   {/* 班级小计 */}
                   <div className="flex items-center justify-end gap-6 px-4 py-2.5 bg-muted/20 border-t text-sm">
                     <span>复述: {clsPerf.retellCount}人次 × ¥{clsPerf.retellUnitPrice} = <span className="font-semibold">¥{clsPerf.retellWage.toFixed(2)}</span></span>
-                    <span>管理费: <span className="font-semibold">¥{clsPerf.managementFee.toFixed(2)}</span></span>
+                    <span>管理费: <span className="font-semibold">¥{clsPerf.managementFee}</span></span>
                     <span>班级合计: <span className="font-bold text-blue-600">¥{clsPerf.total.toFixed(2)}</span></span>
                   </div>
                 </Card>
@@ -300,7 +300,7 @@ export default function PerformancePage(props: PerformancePageProps) {
                       <>
                         <span className="text-blue-800">听力工资 <span className="font-bold">¥{teacherPerf.hearingWage.toFixed(2)}</span></span>
                         <span className="text-blue-800">复述工资 <span className="font-bold">¥{teacherPerf.retellWage.toFixed(2)}</span></span>
-                        <span className="text-blue-800">管理费 <span className="font-bold">¥{teacherPerf.managementFee.toFixed(2)}</span></span>
+                        <span className="text-blue-800">管理费 <span className="font-bold">¥{teacherPerf.managementFee}</span></span>
                       </>
                     )}
                     <span className="text-blue-900 text-base">总计 <span className="font-bold">¥{teacherPerf.total.toFixed(2)}</span></span>
@@ -316,7 +316,7 @@ export default function PerformancePage(props: PerformancePageProps) {
                     <div className="space-y-1">
                       <p>听力工资 = 每周 查表y(元/周) × 时长系数 之和（每月按 {WEEKS_PER_MONTH} 周录入）｜ A初级班: 2课时÷3×2, 3课时÷3×4, 4课时÷3×4 ｜ B/C班: 2课时÷3×2, 3课时÷3×4, 4课时÷3×4, 得出数据再÷{BC_HEARING_DIVISOR}（先除再乘）</p>
                       <p>任一单周听力数据低于最低档位（{minHearingX} 分钟/周）时，按最低档位计薪（查表y 取最小挡位值，标注「↓最低档」）；未录入听力数据的周不计薪</p>
-                      <p>复述工资: 3课时 ¥3/人次, 4课时 ¥4/人次, 2课时无 ｜ 班级管理费: A级老师 2课时¥160/3课时¥200/4课时¥220, B/C级老师 2课时¥140/3课时¥180/4课时¥200，按实际出勤周数比例计算（5周全勤为全额，少一周减20%）</p>
+                      <p>复述工资: 3课时 ¥3/人次, 4课时 ¥4/人次, 2课时无 ｜ 班级管理费: A级老师 2课时¥160/3课时¥200/4课时¥220, B/C级老师 2课时¥140/3课时¥180/4课时¥200，按月固定发放</p>
                       <p>D级兼职老师：无听力/复述/管理费考核，工资与课时挂钩 —— 1课时班级保底¥60/每生¥20，2课时班级保底¥120/每生¥40，3/4课时班级保底¥180/每生¥60；≤3学生按保底，超出按实际人数×单价，按实际出勤周数计薪</p>
                     </div>
                   </div>
