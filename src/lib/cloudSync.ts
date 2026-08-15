@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import type { Teacher, ClassInfo, Student, Campus, Account, SalaryStandardData, StudentMonthlyRecord } from '@/types';
+import type { Teacher, ClassInfo, Student, Campus, Account, SalaryStandardData, StudentMonthlyRecord, PartTimeWeeklyRecord } from '@/types';
 
 /** 云端数据包：整库快照（所有业务数据打成一个 JSON） */
 export interface CloudDataPackage {
@@ -11,6 +11,7 @@ export interface CloudDataPackage {
   accounts: Account[];
   salaryStandard: SalaryStandardData;
   monthlyRecords: StudentMonthlyRecord[];
+  partTimeRecords?: PartTimeWeeklyRecord[]; // 兼容旧数据
 }
 
 const TABLE = 'app_data';

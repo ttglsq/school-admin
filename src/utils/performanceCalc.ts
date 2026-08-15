@@ -1,6 +1,7 @@
 import type {
   Teacher, ClassInfo, Student, SalaryStandardData, SalaryCoefficientKey,
   ClassLevel, ClassDuration, TeacherLevel, StudentMonthlyRecord,
+  PartTimeWeeklyRecord,
 } from '@/types';
 import {
   SALARY_LEVELS, HEARING_DURATION_MULTIPLIER, BC_HEARING_DIVISOR,
@@ -110,6 +111,8 @@ export function calculateClassPerformance(
   students: Student[],
   records: StudentMonthlyRecord[],
   salaryData: SalaryStandardData,
+  partTimeRecords: PartTimeWeeklyRecord[],
+  yearMonth: string,
 ): ClassPerformanceResult {
   const teacherLevel = teacher?.level ?? 'C';
   const classStudents = students.filter(s => s.classId === cls.id);
@@ -120,7 +123,11 @@ export function calculateClassPerformance(
     const perStudent = getPartTimePerStudent(cls.duration);
     const minFee = getPartTimeMinFee(cls.duration);
     const perLesson = Math.max(studentCount * perStudent, minFee);
-    const partTimeWage = perLesson * WEEKS_PER_MONTH;
+    // 按实际出勤周数计算（只有打勾的周数才计入）
+    const attendedWeeks = partTimeRecords.filter(
+      r => r.classId === cls.id && r.yearMonth === yearMonth && r.attended
+    ).length;
+    const partTimeWage = perLesson * attendedWeeks;
     return {
       classId: cls.id,
       className: cls.name,
@@ -244,10 +251,12 @@ export function calculateTeacherPerformance(
   students: Student[],
   records: StudentMonthlyRecord[],
   salaryData: SalaryStandardData,
+  partTimeRecords: PartTimeWeeklyRecord[],
+  yearMonth: string,
 ): TeacherPerformanceResult {
   const teacherClasses = classes.filter(c => c.teacherId === teacher.id);
   const classResults = teacherClasses.map(cls =>
-    calculateClassPerformance(cls, teacher, students, records, salaryData),
+    calculateClassPerformance(cls, teacher, students, records, salaryData, partTimeRecords, yearMonth),
   );
 
   const hearingWage = classResults.reduce((s, c) => s + c.hearingWage, 0);

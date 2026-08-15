@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { Teacher, ClassInfo, Student, Campus, Account, PermissionId, SalaryStandardData, SalaryCoefficientKey, StudentMonthlyRecord } from '@/types';
+import type { Teacher, ClassInfo, Student, Campus, Account, PermissionId, SalaryStandardData, SalaryCoefficientKey, StudentMonthlyRecord, PartTimeWeeklyRecord } from '@/types';
 import { generateId, ALL_PERMISSIONS } from '@/types';
 import { SEED_SALARY_STANDARD } from '@/data/salarySeed';
 import { fetchCloudPackage, pushCloudPackage, isSeedPackage, type CloudDataPackage } from '@/lib/cloudSync';
@@ -13,6 +13,7 @@ const STORAGE_KEYS = {
   currentUser: 'school_current_user',
   salaryStandard: 'school_salary_standard',
   monthlyRecords: 'school_monthly_records',
+  partTimeRecords: 'school_part_time_records',
   // 云端同步元信息（本地缓存与云端的时间戳）
   cloudMeta: 'school_cloud_meta',
   // 旧版本单账号存储，仅用于数据迁移
@@ -139,6 +140,9 @@ export function useStore() {
     // 兼容旧数据：没有 week 字段的记录视为第 1 周
     return stored.map(r => (r.week == null ? { ...r, week: 1 } : r));
   });
+  const [partTimeRecords, setPartTimeRecords] = useState<PartTimeWeeklyRecord[]>(() =>
+    loadFromStorage<PartTimeWeeklyRecord[]>(STORAGE_KEYS.partTimeRecords, [])
+  );
   const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
     const id = localStorage.getItem(STORAGE_KEYS.currentUser);
     return id || null;
@@ -151,8 +155,8 @@ export function useStore() {
   // 组装整库快照
   const buildPackage = useCallback((): CloudDataPackage => ({
     updatedAt: Date.now(),
-    teachers, classes, students, campuses, accounts, salaryStandard, monthlyRecords,
-  }), [teachers, classes, students, campuses, accounts, salaryStandard, monthlyRecords]);
+    teachers, classes, students, campuses, accounts, salaryStandard, monthlyRecords, partTimeRecords,
+  }), [teachers, classes, students, campuses, accounts, salaryStandard, monthlyRecords, partTimeRecords]);
 
   // 用云端数据覆盖本地（写 state + 本地缓存 + 同步 meta）
   const applyCloud = useCallback((pkg: CloudDataPackage) => {
@@ -163,6 +167,7 @@ export function useStore() {
     setAccounts(pkg.accounts);
     setSalaryStandard(pkg.salaryStandard);
     setMonthlyRecords(pkg.monthlyRecords);
+    setPartTimeRecords(pkg.partTimeRecords ?? []);
     saveCloudMeta({ updatedAt: pkg.updatedAt });
   }, []);
 
@@ -238,7 +243,7 @@ export function useStore() {
       })();
     }, 1500);
     return () => clearTimeout(t);
-  }, [teachers, classes, students, campuses, accounts, salaryStandard, monthlyRecords]);
+  }, [teachers, classes, students, campuses, accounts, salaryStandard, monthlyRecords, partTimeRecords]);
 
   // 持久化
   useEffect(() => { saveToStorage(STORAGE_KEYS.teachers, teachers); }, [teachers]);
@@ -248,6 +253,7 @@ export function useStore() {
   useEffect(() => { saveToStorage(STORAGE_KEYS.accounts, accounts); }, [accounts]);
   useEffect(() => { saveToStorage(STORAGE_KEYS.salaryStandard, salaryStandard); }, [salaryStandard]);
   useEffect(() => { saveToStorage(STORAGE_KEYS.monthlyRecords, monthlyRecords); }, [monthlyRecords]);
+  useEffect(() => { saveToStorage(STORAGE_KEYS.partTimeRecords, partTimeRecords); }, [partTimeRecords]);
 
   // 老师操作
   const addTeacher = useCallback((data: Omit<Teacher, 'id' | 'createdAt'>) => {
@@ -389,8 +395,18 @@ export function useStore() {
     });
   }, []);
 
+  // ===== D级兼职老师出勤记录操作 =====
+
+  // 保存某兼职老师某月某周全部出勤记录（覆盖该月该周）
+  const savePartTimeRecords = useCallback((yearMonth: string, week: number, records: PartTimeWeeklyRecord[]) => {
+    setPartTimeRecords(prev => {
+      const others = prev.filter(r => !(r.yearMonth === yearMonth && r.week === week));
+      return [...others, ...records];
+    });
+  }, []);
+
   return {
-    teachers, classes, students, campuses, accounts, currentUser, salaryStandard, monthlyRecords,
+    teachers, classes, students, campuses, accounts, currentUser, salaryStandard, monthlyRecords, partTimeRecords,
     cloudStatus,
     addTeacher, updateTeacher, deleteTeacher,
     addClass, updateClass, deleteClass,
@@ -399,6 +415,7 @@ export function useStore() {
     addAccount, updateAccount, deleteAccount, updateOwnAccount, isUsernameTaken,
     updateSalaryStandard, resetSalaryStandard,
     getMonthlyRecords, saveWeeklyRecords,
+    savePartTimeRecords,
     isLoggedIn, login, logout,
   };
 }

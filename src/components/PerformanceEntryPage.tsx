@@ -9,8 +9,8 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import type { Teacher, ClassInfo, Student, StudentMonthlyRecord } from '@/types';
-import { WEEKS_PER_MONTH, isPartTimeTeacher } from '@/types';
+import type { Teacher, ClassInfo, Student, StudentMonthlyRecord, PartTimeWeeklyRecord } from '@/types';
+import { WEEKS_PER_MONTH, isPartTimeTeacher, getPartTimePerStudent, getPartTimeMinFee } from '@/types';
 
 interface PerformanceEntryPageProps {
   teachers: Teacher[];
@@ -18,6 +18,8 @@ interface PerformanceEntryPageProps {
   students: Student[];
   monthlyRecords: StudentMonthlyRecord[];
   onSaveWeeklyRecords: (yearMonth: string, week: number, records: StudentMonthlyRecord[]) => void;
+  partTimeRecords: PartTimeWeeklyRecord[];
+  onSavePartTimeRecords: (yearMonth: string, week: number, records: PartTimeWeeklyRecord[]) => void;
 }
 
 // 当前年月字符串 "YYYY-MM"
@@ -39,8 +41,10 @@ export default function PerformanceEntryPage(props: PerformanceEntryPageProps) {
   const [expandedClasses, setExpandedClasses] = useState<Set<string>>(new Set());
   const [editMap, setEditMap] = useState<Record<string, EditRecord>>({});
   const [dirty, setDirty] = useState(false);
+  // D级兼职出勤编辑状态：classId -> attended
+  const [partTimeEditMap, setPartTimeEditMap] = useState<Record<string, boolean>>({});
 
-  const { teachers, classes, students, monthlyRecords } = props;
+  const { teachers, classes, students, monthlyRecords, partTimeRecords } = props;
   const selectedTeacher = teachers.find(t => t.id === selectedTeacherId);
 
   const teacherClasses = useMemo(
@@ -52,13 +56,31 @@ export default function PerformanceEntryPage(props: PerformanceEntryPageProps) {
   // 该老师某周是否已有已保存记录（用于周标签上的圆点提示）
   const weekHasData = useCallback((w: number): boolean => {
     if (!selectedTeacherId) return false;
+    if (selectedTeacher && isPartTimeTeacher(selectedTeacher.level)) {
+      return partTimeRecords.some(r => r.yearMonth === yearMonth && r.week === w && classIds.has(r.classId));
+    }
     return monthlyRecords.some(r => r.yearMonth === yearMonth && r.week === w && classIds.has(r.classId));
-  }, [selectedTeacherId, monthlyRecords, yearMonth, classIds]);
+  }, [selectedTeacherId, selectedTeacher, monthlyRecords, partTimeRecords, yearMonth, classIds]);
 
   // 加载某月某周某老师的记录到编辑区
   const loadRecords = useCallback((ym: string, wk: number, teacherId: string) => {
     const tClasses = classes.filter(c => c.teacherId === teacherId);
     const cIds = new Set(tClasses.map(c => c.id));
+    const teacher = teachers.find(t => t.id === teacherId);
+
+    if (teacher && isPartTimeTeacher(teacher.level)) {
+      // 加载兼职出勤记录
+      const existing = partTimeRecords.filter(r => r.yearMonth === ym && r.week === wk && cIds.has(r.classId));
+      const map: Record<string, boolean> = {};
+      for (const cls of tClasses) {
+        const rec = existing.find(r => r.classId === cls.id);
+        map[cls.id] = rec?.attended ?? false;
+      }
+      setPartTimeEditMap(map);
+      setDirty(false);
+      return;
+    }
+
     const existing = monthlyRecords.filter(r => r.yearMonth === ym && r.week === wk && cIds.has(r.classId));
     const map: Record<string, EditRecord> = {};
     for (const cls of tClasses) {
@@ -75,7 +97,7 @@ export default function PerformanceEntryPage(props: PerformanceEntryPageProps) {
     setDirty(false);
     // 默认展开所有班级
     setExpandedClasses(new Set(tClasses.map(c => c.id)));
-  }, [classes, students, monthlyRecords]);
+  }, [classes, students, monthlyRecords, partTimeRecords, teachers]);
 
   // 切换年月 / 周次 / 老师（有未保存修改时先确认）
   const switchContext = (ym: string, wk: number, teacherId: string) => {
@@ -84,18 +106,45 @@ export default function PerformanceEntryPage(props: PerformanceEntryPageProps) {
     setWeek(wk);
     setSelectedTeacherId(teacherId);
     if (teacherId) loadRecords(ym, wk, teacherId);
-    else { setEditMap({}); setDirty(false); }
+    else { setEditMap({}); setPartTimeEditMap({}); setDirty(false); }
   };
 
-  // 更新编辑记录
+  // 更新编辑记录（A/B/C级）
   const updateEdit = (studentId: string, field: 'hearingX' | 'retell', value: string | boolean) => {
     setEditMap(prev => ({ ...prev, [studentId]: { ...prev[studentId], [field]: value } }));
+    setDirty(true);
+  };
+
+  // 更新兼职出勤记录（D级）
+  const updatePartTimeAttendance = (classId: string, attended: boolean) => {
+    setPartTimeEditMap(prev => ({ ...prev, [classId]: attended }));
     setDirty(true);
   };
 
   // 保存当前 月+周 的数据
   const handleSave = () => {
     if (!selectedTeacherId) return;
+    const teacher = teachers.find(t => t.id === selectedTeacherId);
+
+    if (teacher && isPartTimeTeacher(teacher.level)) {
+      // 保存兼职出勤记录
+      const records: PartTimeWeeklyRecord[] = [];
+      for (const cls of teacherClasses) {
+        records.push({
+          id: `${yearMonth}-w${week}-${cls.id}`,
+          teacherId: selectedTeacherId,
+          classId: cls.id,
+          yearMonth,
+          week,
+          attended: partTimeEditMap[cls.id] ?? false,
+        });
+      }
+      props.onSavePartTimeRecords(yearMonth, week, records);
+      setDirty(false);
+      toast.success(`${yearMonth} 第${week}周兼职出勤记录已保存`);
+      return;
+    }
+
     const records: StudentMonthlyRecord[] = [];
     for (const cls of teacherClasses) {
       const classStudents = students.filter(s => s.classId === cls.id);
@@ -215,14 +264,49 @@ export default function PerformanceEntryPage(props: PerformanceEntryPageProps) {
           </CardContent>
         </Card>
       ) : selectedTeacher && isPartTimeTeacher(selectedTeacher.level) ? (
-        <Card>
-          <CardContent className="p-12 text-center text-muted-foreground">
-            <GraduationCap className="w-12 h-12 mx-auto mb-3 opacity-40" />
-            <p className="font-medium text-foreground mb-1">该老师为 D 级兼职教师</p>
-            <p>兼职老师无需录入听力/复述数据，系统按班级学生人数与课时自动计薪</p>
-            <p className="text-xs mt-2">计薪规则：1课时班级保底¥60/每生¥20，2课时班级保底¥120/每生¥40，3/4课时班级保底¥180/每生¥60；≤3学生按保底，超出按实际人数×单价，每月按 {WEEKS_PER_MONTH} 周计</p>
-          </CardContent>
-        </Card>
+        teacherClasses.length === 0 ? (
+          <Card>
+            <CardContent className="p-12 text-center text-muted-foreground">
+              <School className="w-12 h-12 mx-auto mb-3 opacity-40" />
+              <p>该老师名下暂无班级</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <>
+            {teacherClasses.map(cls => {
+              const classStudents = students.filter(s => s.classId === cls.id);
+              const studentCount = classStudents.length;
+              const perStudent = getPartTimePerStudent(cls.duration);
+              const minFee = getPartTimeMinFee(cls.duration);
+              const perLesson = Math.max(studentCount * perStudent, minFee);
+              return (
+                <Card key={cls.id} className="overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <School className="w-4 h-4 text-purple-600" />
+                      <span className="font-medium">{cls.name}</span>
+                      <span className="text-xs text-muted-foreground">{studentCount} 名学生</span>
+                      <span className="text-xs text-muted-foreground">· {perLesson}元/周</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id={`pt-${cls.id}`}
+                        checked={partTimeEditMap[cls.id] ?? false}
+                        onCheckedChange={(v) => updatePartTimeAttendance(cls.id, v === true)}
+                      />
+                      <label htmlFor={`pt-${cls.id}`} className="text-sm font-medium cursor-pointer select-none">
+                        本周上课
+                      </label>
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+            <div className="text-xs text-muted-foreground text-center">
+              {teacherClasses.length} 个班级 · {yearMonth} 第{week}周
+            </div>
+          </>
+        )
       ) : teacherClasses.length === 0 ? (
         <Card>
           <CardContent className="p-12 text-center text-muted-foreground">

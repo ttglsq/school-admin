@@ -13,7 +13,7 @@ import SalaryStandardPage from './SalaryStandardPage';
 import PerformanceEntryPage from './PerformanceEntryPage';
 import PerformancePage from './PerformancePage';
 import AccountSettingsDialog from './AccountSettingsDialog';
-import type { Teacher, ClassInfo, Student, Campus, Account, PermissionId, SalaryStandardData, SalaryCoefficientKey, SalaryStandardRow, StudentMonthlyRecord } from '@/types';
+import type { Teacher, ClassInfo, Student, Campus, Account, PermissionId, SalaryStandardData, SalaryCoefficientKey, SalaryStandardRow, StudentMonthlyRecord, PartTimeWeeklyRecord } from '@/types';
 import { TEACHER_LEVELS, CLASS_LEVELS, ROLE_LABELS } from '@/types';
 
 export type PageId = 'overview' | 'campuses' | 'teachers' | 'classes' | 'students' | 'accounts' | 'salary' | 'entry' | 'performance';
@@ -55,6 +55,9 @@ interface DashboardProps {
   // 绩效考核
   monthlyRecords: StudentMonthlyRecord[];
   onSaveWeeklyRecords: (yearMonth: string, week: number, records: StudentMonthlyRecord[]) => void;
+  // D级兼职出勤记录
+  partTimeRecords: PartTimeWeeklyRecord[];
+  onSavePartTimeRecords: (yearMonth: string, week: number, records: PartTimeWeeklyRecord[]) => void;
   // 云端同步状态
   cloudStatus: 'syncing' | 'synced' | 'offline';
 }
@@ -259,6 +262,8 @@ export default function Dashboard(props: DashboardProps) {
             students={props.students}
             monthlyRecords={props.monthlyRecords}
             onSaveWeeklyRecords={props.onSaveWeeklyRecords}
+            partTimeRecords={props.partTimeRecords}
+            onSavePartTimeRecords={props.onSavePartTimeRecords}
           />
         );
       case 'performance':
@@ -269,6 +274,7 @@ export default function Dashboard(props: DashboardProps) {
             students={props.students}
             salaryStandard={props.salaryStandard}
             monthlyRecords={props.monthlyRecords}
+            partTimeRecords={props.partTimeRecords}
           />
         );
       default:

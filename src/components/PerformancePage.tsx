@@ -7,7 +7,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import type { Teacher, ClassInfo, Student, SalaryStandardData, StudentMonthlyRecord } from '@/types';
+import type { Teacher, ClassInfo, Student, SalaryStandardData, StudentMonthlyRecord, PartTimeWeeklyRecord } from '@/types';
 import { TEACHER_LEVELS, CLASS_LEVELS, CLASS_DURATIONS, WEEKS_PER_MONTH, BC_HEARING_DIVISOR, getPartTimePerStudent, getPartTimeMinFee, isPartTimeTeacher } from '@/types';
 import {
   calculateTeacherPerformance,
@@ -24,6 +24,7 @@ interface PerformancePageProps {
   students: Student[];
   salaryStandard: SalaryStandardData;
   monthlyRecords: StudentMonthlyRecord[];
+  partTimeRecords: PartTimeWeeklyRecord[];
 }
 
 // 当前年月字符串 "YYYY-MM"
@@ -37,24 +38,29 @@ export default function PerformancePage(props: PerformancePageProps) {
   const [tab, setTab] = useState<'view' | 'summary'>('view');
   const [selectedTeacherId, setSelectedTeacherId] = useState('');
 
-  const { teachers, classes, students, salaryStandard, monthlyRecords } = props;
+  const { teachers, classes, students, salaryStandard, monthlyRecords, partTimeRecords } = props;
 
   const monthRecords = useMemo(
     () => monthlyRecords.filter(r => r.yearMonth === yearMonth),
     [monthlyRecords, yearMonth],
   );
 
+  const monthPartTimeRecords = useMemo(
+    () => partTimeRecords.filter(r => r.yearMonth === yearMonth),
+    [partTimeRecords, yearMonth],
+  );
+
   // ===== 数据展示 Tab：所选老师的月度明细 =====
   const selectedTeacher = teachers.find(t => t.id === selectedTeacherId);
   const teacherPerf = useMemo(() => {
     if (!selectedTeacher) return null;
-    return calculateTeacherPerformance(selectedTeacher, classes, students, monthRecords, salaryStandard);
-  }, [selectedTeacher, classes, students, monthRecords, salaryStandard]);
+    return calculateTeacherPerformance(selectedTeacher, classes, students, monthRecords, salaryStandard, monthPartTimeRecords, yearMonth);
+  }, [selectedTeacher, classes, students, monthRecords, salaryStandard, monthPartTimeRecords, yearMonth]);
 
   // ===== 绩效汇总 Tab =====
   const allTeacherPerfs = useMemo<TeacherPerformanceResult[]>(() => {
-    return teachers.map(t => calculateTeacherPerformance(t, classes, students, monthRecords, salaryStandard));
-  }, [teachers, classes, students, monthRecords, salaryStandard]);
+    return teachers.map(t => calculateTeacherPerformance(t, classes, students, monthRecords, salaryStandard, monthPartTimeRecords, yearMonth));
+  }, [teachers, classes, students, monthRecords, salaryStandard, monthPartTimeRecords, yearMonth]);
 
   const summaryTotal = allTeacherPerfs.reduce((s, t) => s + t.total, 0);
 

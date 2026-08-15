@@ -39,6 +39,8 @@ export default function App() {
           onResetSalaryStandard={store.resetSalaryStandard}
           monthlyRecords={store.monthlyRecords}
           onSaveWeeklyRecords={store.saveWeeklyRecords}
+          partTimeRecords={store.partTimeRecords}
+          onSavePartTimeRecords={store.savePartTimeRecords}
           cloudStatus={store.cloudStatus}
         />
       ) : (

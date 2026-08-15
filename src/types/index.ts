@@ -134,7 +134,7 @@ export interface StudentMonthlyRecord {
 }
 
 /** 每月按多少周计算（听力系数表 y 是"元/周/人"） */
-export const WEEKS_PER_MONTH = 4;
+export const WEEKS_PER_MONTH = 5;
 
 /**
  * 听力数据工资 — 时长系数
@@ -187,6 +187,18 @@ export function getPartTimeMinFee(duration: ClassDuration): number {
 /** 判断老师等级是否为 D 级兼职 */
 export function isPartTimeTeacher(level: TeacherLevel): boolean {
   return level === 'D';
+}
+
+// ===== D级兼职老师出勤记录 =====
+
+/** D级兼职老师每周出勤记录（按班级） */
+export interface PartTimeWeeklyRecord {
+  id: string;
+  teacherId: string;
+  classId: string;
+  yearMonth: string; // "2026-08"
+  week: number;      // 第几周（1~5）
+  attended: boolean;   // 是否上课（打勾）
 }
 
 // 生成唯一ID
