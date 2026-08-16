@@ -1,71 +1,141 @@
 import { supabase } from './supabaseClient';
 import type { Teacher, ClassInfo, Student, Campus, Account, SalaryStandardData, StudentMonthlyRecord, PartTimeWeeklyRecord } from '@/types';
 
-/** 云端数据包：整库快照（所有业务数据打成一个 JSON） */
-export interface CloudDataPackage {
-  updatedAt: number; // 上次修改时间戳（ms）
+/**
+ * 按行存储方案：复用 app_data 表，每个实体一行。
+ * 行 ID 前缀区分类型：teacher:t1, class:c1, student:s1, ...
+ * 旧整库 blob (id=main) 保留为备份，不被读取。
+ */
+
+const TABLE = 'app_data';
+
+const PREFIX = {
+  teacher: 'teacher:',
+  cls: 'class:',
+  student: 'student:',
+  campus: 'campus:',
+  account: 'account:',
+  salaryStandard: 'config:salary_standard',
+  monthlyRecord: 'record:monthly:',
+  partTimeRecord: 'record:parttime:',
+} as const;
+
+/** 云端拉取的全量数据（按类型分组） */
+export interface AllCloudData {
   teachers: Teacher[];
   classes: ClassInfo[];
   students: Student[];
   campuses: Campus[];
   accounts: Account[];
-  salaryStandard: SalaryStandardData;
+  salaryStandard: SalaryStandardData | null;
   monthlyRecords: StudentMonthlyRecord[];
-  partTimeRecords?: PartTimeWeeklyRecord[]; // 兼容旧数据
+  partTimeRecords: PartTimeWeeklyRecord[];
 }
 
-const TABLE = 'app_data';
-const ROW_ID = 'main';
-
 export type FetchResult =
-  | { ok: true; data: CloudDataPackage | null } // null = 云端还没有数据
-  | { ok: false; error: unknown };              // 网络/权限等失败
+  | { ok: true; data: AllCloudData | null }
+  | { ok: false; error: unknown };
 
-/** 从云端拉取整库快照（失败与「无数据」严格区分） */
-export async function fetchCloudPackage(): Promise<FetchResult> {
+/** 从云端拉取所有逐行数据（排除旧 blob id=main） */
+export async function fetchAllCloudData(): Promise<FetchResult> {
   try {
     const { data, error } = await supabase
       .from(TABLE)
-      .select('data')
-      .eq('id', ROW_ID)
-      .maybeSingle();
+      .select('id, data')
+      .neq('id', 'main');
     if (error) throw error;
-    if (!data || !data.data) return { ok: true, data: null };
-    return { ok: true, data: data.data as CloudDataPackage };
+    if (!data || data.length === 0) return { ok: true, data: null };
+
+    const result: AllCloudData = {
+      teachers: [],
+      classes: [],
+      students: [],
+      campuses: [],
+      accounts: [],
+      salaryStandard: null,
+      monthlyRecords: [],
+      partTimeRecords: [],
+    };
+
+    for (const row of data) {
+      const id: string = row.id;
+      const d = row.data;
+      if (id.startsWith(PREFIX.teacher)) result.teachers.push(d as Teacher);
+      else if (id.startsWith(PREFIX.cls)) result.classes.push(d as ClassInfo);
+      else if (id.startsWith(PREFIX.student)) result.students.push(d as Student);
+      else if (id.startsWith(PREFIX.campus)) result.campuses.push(d as Campus);
+      else if (id.startsWith(PREFIX.account)) result.accounts.push(d as Account);
+      else if (id === PREFIX.salaryStandard) result.salaryStandard = d as SalaryStandardData;
+      else if (id.startsWith(PREFIX.monthlyRecord)) result.monthlyRecords.push(d as StudentMonthlyRecord);
+      else if (id.startsWith(PREFIX.partTimeRecord)) result.partTimeRecords.push(d as PartTimeWeeklyRecord);
+    }
+
+    return { ok: true, data: result };
   } catch (e) {
     console.warn('[cloud] 拉取失败:', e);
     return { ok: false, error: e };
   }
 }
 
-/** 上传整库快照到云端（upsert id=main） */
-export async function pushCloudPackage(pkg: CloudDataPackage): Promise<boolean> {
+/** upsert 单行 */
+async function upsertRow(id: string, data: unknown): Promise<boolean> {
   try {
-    const { error } = await supabase.from(TABLE).upsert(
-      { id: ROW_ID, data: pkg, updated_at: new Date().toISOString() },
-      { onConflict: 'id' }
-    );
+    const { error } = await supabase
+      .from(TABLE)
+      .upsert({ id, data, updated_at: new Date().toISOString() }, { onConflict: 'id' });
     if (error) throw error;
     return true;
   } catch (e) {
-    console.warn('[cloud] 上传失败:', e);
+    console.warn('[cloud] upsert 失败:', id, e);
     return false;
   }
 }
 
-/** 判断某包是否等于「内置种子数据」（全新设备首次打开的状态） */
-export function isSeedPackage(pkg: {
-  teachers: Teacher[]; classes: ClassInfo[]; students: Student[]; campuses: Campus[];
-  accounts: Account[]; salaryStandard: SalaryStandardData; monthlyRecords: StudentMonthlyRecord[];
-}, seeds: {
-  seedTeachers: Teacher[]; seedClasses: ClassInfo[]; seedStudents: Student[]; seedCampuses: Campus[];
-}): boolean {
-  if (pkg.monthlyRecords.length > 0) return false;
-  if (pkg.accounts.length !== 1 || pkg.accounts[0]?.username !== 'admin') return false;
-  return (
-    JSON.stringify(pkg.teachers) === JSON.stringify(seeds.seedTeachers) &&
-    JSON.stringify(pkg.classes) === JSON.stringify(seeds.seedClasses) &&
-    JSON.stringify(pkg.students) === JSON.stringify(seeds.seedStudents) &&
-    JSON.stringify(pkg.campuses) === JSON.stringify(seeds.seedCampuses)
-  );
+/** delete 单行 */
+async function deleteRow(id: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from(TABLE)
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    console.warn('[cloud] delete 失败:', id, e);
+    return false;
+  }
 }
+
+/** 按实体类型的 CRUD 操作 */
+export const cloudSync = {
+  // 老师
+  upsertTeacher: (t: Teacher) => upsertRow(`${PREFIX.teacher}${t.id}`, t),
+  deleteTeacher: (id: string) => deleteRow(`${PREFIX.teacher}${id}`),
+
+  // 班级
+  upsertClass: (c: ClassInfo) => upsertRow(`${PREFIX.cls}${c.id}`, c),
+  deleteClass: (id: string) => deleteRow(`${PREFIX.cls}${id}`),
+
+  // 学生
+  upsertStudent: (s: Student) => upsertRow(`${PREFIX.student}${s.id}`, s),
+  deleteStudent: (id: string) => deleteRow(`${PREFIX.student}${id}`),
+
+  // 校区
+  upsertCampus: (c: Campus) => upsertRow(`${PREFIX.campus}${c.id}`, c),
+  deleteCampus: (id: string) => deleteRow(`${PREFIX.campus}${id}`),
+
+  // 账号
+  upsertAccount: (a: Account) => upsertRow(`${PREFIX.account}${a.id}`, a),
+  deleteAccount: (id: string) => deleteRow(`${PREFIX.account}${id}`),
+
+  // 薪资配置（单行）
+  upsertSalaryStandard: (s: SalaryStandardData) => upsertRow(PREFIX.salaryStandard, s),
+
+  // 月度绩效记录
+  upsertMonthlyRecord: (r: StudentMonthlyRecord) => upsertRow(`${PREFIX.monthlyRecord}${r.id}`, r),
+  deleteMonthlyRecord: (id: string) => deleteRow(`${PREFIX.monthlyRecord}${id}`),
+
+  // D级兼职出勤记录
+  upsertPartTimeRecord: (r: PartTimeWeeklyRecord) => upsertRow(`${PREFIX.partTimeRecord}${r.id}`, r),
+  deletePartTimeRecord: (id: string) => deleteRow(`${PREFIX.partTimeRecord}${id}`),
+};

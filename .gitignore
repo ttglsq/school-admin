@@ -32,3 +32,6 @@ Thumbs.db
 .env.local
 .env.*.local
 deploy-gh-pages.cjs
+backup-cloud.cjs
+migrate-to-per-entity.cjs
+cloud-backup-*.json
