@@ -9,7 +9,7 @@ import { APP_VERSION } from '@/version';
 
 interface LoginPageProps {
   accounts: Account[];
-  onLogin: (username: string, password: string) => Promise<boolean>;
+  onLogin: (username: string, password: string) => Promise<boolean | 'cloud-unreachable'>;
 }
 
 export default function LoginPage({ onLogin }: LoginPageProps) {
@@ -30,8 +30,12 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
 
     setLoading(true);
     try {
-      const ok = await onLogin(username.trim(), password);
-      if (!ok) setError('用户名或密码错误');
+      const result = await onLogin(username.trim(), password);
+      if (result === 'cloud-unreachable') {
+        setError('无法连接云端数据库，且本地缓存账号不匹配。请检查网络后重试，或联系管理员');
+      } else if (!result) {
+        setError('用户名或密码错误');
+      }
     } catch {
       setError('登录失败，请检查网络后重试');
     }

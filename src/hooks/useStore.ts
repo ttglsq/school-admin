@@ -255,12 +255,20 @@ export function useStore() {
   const isLoggedIn = !!currentUser;
 
   // 登录：优先用云端最新账号校验（防止本地陈旧数据导致正确密码登不上），失败回退本地
-  const login = useCallback(async (username: string, password: string): Promise<boolean> => {
+  // 返回 true=成功；'cloud-unreachable'=云端连不上且本地账号也不匹配；false=账号密码错误
+  const login = useCallback(async (username: string, password: string): Promise<boolean | 'cloud-unreachable'> => {
     let list = accountsRef.current;
     const cloudAccounts = await fetchCloudAccounts();
     if (cloudAccounts && cloudAccounts.length > 0) {
       list = cloudAccounts;
       setAccounts(cloudAccounts);
+    } else if (cloudAccounts === null) {
+      // 云端不可达，用本地缓存校验
+      const found = list.find(a => a.username === username && a.password === password);
+      if (!found) return 'cloud-unreachable';
+      localStorage.setItem(STORAGE_KEYS.currentUser, found.id);
+      setCurrentUserId(found.id);
+      return true;
     }
     const found = list.find(a => a.username === username && a.password === password);
     if (!found) return false;
