@@ -106,6 +106,22 @@ async function deleteRow(id: string): Promise<boolean> {
   }
 }
 
+/** 登录时拉取云端最新账号列表（失败返回 null，调用方回退本地数据） */
+export async function fetchCloudAccounts(): Promise<Account[] | null> {
+  try {
+    const result = await Promise.race([
+      supabase.from(TABLE).select('id, data').like('id', 'account:*'),
+      new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+    ]);
+    const { data, error } = result as { data: { data: Account }[] | null; error: unknown };
+    if (error) throw error;
+    return (data || []).map(r => r.data as Account);
+  } catch (e) {
+    console.warn('[cloud] 拉取账号失败:', e);
+    return null;
+  }
+}
+
 /** 按实体类型的 CRUD 操作 */
 export const cloudSync = {
   // 老师

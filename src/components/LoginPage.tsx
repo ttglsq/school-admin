@@ -9,20 +9,17 @@ import { APP_VERSION } from '@/version';
 
 interface LoginPageProps {
   accounts: Account[];
-  onLogin: (username: string, password: string) => boolean;
+  onLogin: (username: string, password: string) => Promise<boolean>;
 }
 
-export default function LoginPage({ accounts, onLogin }: LoginPageProps) {
+export default function LoginPage({ onLogin }: LoginPageProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const admin = accounts.find(a => a.role === 'admin');
-  const isDefaultPassword = admin ? admin.password === 'admin123' : false;
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -32,14 +29,13 @@ export default function LoginPage({ accounts, onLogin }: LoginPageProps) {
     }
 
     setLoading(true);
-    // 模拟登录验证：在所有账号中比对
-    setTimeout(() => {
-      const ok = onLogin(username.trim(), password);
-      if (!ok) {
-        setError('用户名或密码错误');
-        setLoading(false);
-      }
-    }, 600);
+    try {
+      const ok = await onLogin(username.trim(), password);
+      if (!ok) setError('用户名或密码错误');
+    } catch {
+      setError('登录失败，请检查网络后重试');
+    }
+    setLoading(false);
   };
 
   return (
@@ -105,18 +101,7 @@ export default function LoginPage({ accounts, onLogin }: LoginPageProps) {
             </Button>
 
             <div className="text-center text-sm text-muted-foreground bg-muted/50 rounded-lg px-3 py-2.5">
-              {isDefaultPassword ? (
-                <>
-                  管理员账号：<span className="font-semibold text-foreground">admin</span>
-                  {'　'}默认密码：<span className="font-semibold text-foreground">admin123</span>
-                  <span className="block text-xs mt-1">子账号由管理员在「账号管理」中创建并分配权限</span>
-                </>
-              ) : (
-                <>
-                  管理员账号：<span className="font-semibold text-foreground">{admin?.username}</span>
-                  <span className="block text-xs mt-1">密码已修改，请使用新密码登录</span>
-                </>
-              )}
+              如无账号，请联系管理员开通
             </div>
           </form>
         </CardContent>

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Teacher, ClassInfo, Student, Campus, Account, PermissionId, SalaryStandardData, SalaryCoefficientKey, StudentMonthlyRecord, PartTimeWeeklyRecord } from '@/types';
 import { generateId, ALL_PERMISSIONS } from '@/types';
 import { SEED_SALARY_STANDARD } from '@/data/salarySeed';
-import { fetchAllCloudData, cloudSync } from '@/lib/cloudSync';
+import { fetchAllCloudData, fetchCloudAccounts, cloudSync } from '@/lib/cloudSync';
 
 const STORAGE_KEYS = {
   teachers: 'school_teachers',
@@ -254,8 +254,15 @@ export function useStore() {
   const currentUser = accounts.find(a => a.id === currentUserId) || null;
   const isLoggedIn = !!currentUser;
 
-  const login = useCallback((username: string, password: string): boolean => {
-    const found = accountsRef.current.find(a => a.username === username && a.password === password);
+  // 登录：优先用云端最新账号校验（防止本地陈旧数据导致正确密码登不上），失败回退本地
+  const login = useCallback(async (username: string, password: string): Promise<boolean> => {
+    let list = accountsRef.current;
+    const cloudAccounts = await fetchCloudAccounts();
+    if (cloudAccounts && cloudAccounts.length > 0) {
+      list = cloudAccounts;
+      setAccounts(cloudAccounts);
+    }
+    const found = list.find(a => a.username === username && a.password === password);
     if (!found) return false;
     localStorage.setItem(STORAGE_KEYS.currentUser, found.id);
     setCurrentUserId(found.id);
