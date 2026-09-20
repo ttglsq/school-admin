@@ -108,18 +108,22 @@ async function deleteRow(id: string): Promise<boolean> {
 
 /** 登录时拉取云端最新账号列表（失败返回 null，调用方回退本地数据） */
 export async function fetchCloudAccounts(): Promise<Account[] | null> {
-  try {
-    const result = await Promise.race([
-      supabase.from(TABLE).select('id, data').like('id', 'account:*'),
-      new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
-    ]);
-    const { data, error } = result as { data: { data: Account }[] | null; error: unknown };
-    if (error) throw error;
-    return (data || []).map(r => r.data as Account);
-  } catch (e) {
-    console.warn('[cloud] 拉取账号失败:', e);
-    return null;
+  // 共尝试 2 次（跨境网络波动/DNS 缓存未过期时第一次可能失败）
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const result = await Promise.race([
+        supabase.from(TABLE).select('id, data').like('id', 'account:*'),
+        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000)),
+      ]);
+      const { data, error } = result as { data: { data: Account }[] | null; error: unknown };
+      if (error) throw error;
+      return (data || []).map(r => r.data as Account);
+    } catch (e) {
+      console.warn(`[cloud] 拉取账号失败(第${attempt + 1}次):`, e);
+      if (attempt === 0) await new Promise(r => setTimeout(r, 1500));
+    }
   }
+  return null;
 }
 
 /** 按实体类型的 CRUD 操作 */
