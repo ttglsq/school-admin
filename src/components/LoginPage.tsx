@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { Account } from '@/types';
+import { APP_VERSION } from '@/version';
 
 interface LoginPageProps {
   accounts: Account[];
@@ -120,6 +121,9 @@ export default function LoginPage({ accounts, onLogin }: LoginPageProps) {
           </form>
         </CardContent>
       </Card>
+      <div className="fixed bottom-3 left-0 right-0 text-center text-xs text-white/50 select-none">
+        {APP_VERSION}
+      </div>
     </div>
   );
 }

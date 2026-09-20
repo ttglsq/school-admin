@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { APP_VERSION } from '@/version';
 import { GraduationCap, Users, School, LayoutDashboard, LogOut, Menu, Building2, KeyRound, UserCog, Coins, Calculator, ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
@@ -123,7 +124,7 @@ export default function Dashboard(props: DashboardProps) {
         </div>
         <div className="min-w-0">
           <div className="font-bold text-sidebar-foreground text-base leading-tight">书悦管理系统</div>
-          <div className="text-xs text-sidebar-foreground/50">ShuYue Admin</div>
+          <div className="text-xs text-sidebar-foreground/50">ShuYue Admin · {APP_VERSION}</div>
         </div>
       </div>
 
