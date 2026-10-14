@@ -1,10 +1,40 @@
+import { useEffect } from 'react';
+import { toast } from 'sonner';
 import { Toaster } from '@/components/ui/sonner';
 import { useStore } from '@/hooks/useStore';
 import LoginPage from '@/components/LoginPage';
 import Dashboard from '@/components/Dashboard';
+import { APP_VERSION } from '@/version';
 
 export default function App() {
   const store = useStore();
+
+  // 自动版本检测：线上有新版本发布时，自动刷新，避免设备长时间停留在旧版本
+  useEffect(() => {
+    let stopped = false;
+    const check = async () => {
+      try {
+        const res = await fetch(`./version.json?t=${Date.now()}`, { cache: 'no-store' });
+        if (!res.ok) return;
+        const j = await res.json() as { version?: string };
+        if (stopped || !j?.version || j.version === APP_VERSION) return;
+        const key = 'school_version_reloaded_for';
+        if (sessionStorage.getItem(key) === j.version) return; // 防止刷新死循环
+        sessionStorage.setItem(key, j.version);
+        toast.info('检测到新版本，正在自动刷新…', { duration: 1500 });
+        window.setTimeout(() => window.location.reload(), 800);
+      } catch { /* 忽略网络错误 */ }
+    };
+    void check();
+    const timer = window.setInterval(() => { void check(); }, 60000);
+    const onVisible = () => { if (document.visibilityState === 'visible') void check(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
 
   return (
     <>
@@ -42,6 +72,8 @@ export default function App() {
           partTimeRecords={store.partTimeRecords}
           onSavePartTimeRecords={store.savePartTimeRecords}
           cloudStatus={store.cloudStatus}
+          cloudLoaded={store.cloudLoaded}
+          pendingCount={store.pendingCount}
         />
       ) : (
         <LoginPage accounts={store.accounts} onLogin={store.login} />

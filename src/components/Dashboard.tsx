@@ -60,7 +60,11 @@ interface DashboardProps {
   partTimeRecords: PartTimeWeeklyRecord[];
   onSavePartTimeRecords: (yearMonth: string, week: number, records: PartTimeWeeklyRecord[]) => void;
   // 云端同步状态
-  cloudStatus: 'syncing' | 'synced' | 'offline';
+  cloudStatus: 'syncing' | 'synced' | 'offline' | 'pending';
+  // 云端数据是否已加载完成（未完成前不要录入数据）
+  cloudLoaded: boolean;
+  // 还没成功写进云端的操作数
+  pendingCount: number;
 }
 
 interface NavItem {
@@ -172,6 +176,12 @@ export default function Dashboard(props: DashboardProps) {
               <span>云端离线，使用本地数据</span>
             </>
           )}
+          {props.cloudStatus === 'pending' && (
+            <>
+              <span className="w-2 h-2 rounded-full bg-orange-400 animate-pulse shrink-0" />
+              <span>{props.pendingCount} 条待同步</span>
+            </>
+          )}
         </div>
       </div>
 
@@ -265,6 +275,9 @@ export default function Dashboard(props: DashboardProps) {
             onSaveWeeklyRecords={props.onSaveWeeklyRecords}
             partTimeRecords={props.partTimeRecords}
             onSavePartTimeRecords={props.onSavePartTimeRecords}
+            cloudLoaded={props.cloudLoaded}
+            cloudStatus={props.cloudStatus}
+            pendingCount={props.pendingCount}
           />
         );
       case 'performance':

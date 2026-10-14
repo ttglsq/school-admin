@@ -1,8 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { toast } from 'sonner';
 import type { Teacher, ClassInfo, Student, Campus, Account, PermissionId, SalaryStandardData, SalaryCoefficientKey, StudentMonthlyRecord, PartTimeWeeklyRecord } from '@/types';
 import { generateId, ALL_PERMISSIONS } from '@/types';
 import { SEED_SALARY_STANDARD } from '@/data/salarySeed';
-import { fetchAllCloudData, fetchCloudAccounts, cloudSync } from '@/lib/cloudSync';
+import {
+  fetchAllCloudData, fetchCloudAccounts, cloudSync,
+  flushPending, pendingOpCount, onPendingChange,
+} from '@/lib/cloudSync';
 
 const STORAGE_KEYS = {
   teachers: 'school_teachers',
@@ -18,7 +22,7 @@ const STORAGE_KEYS = {
   legacyAuth: 'school_auth',
 };
 
-export type CloudSyncStatus = 'syncing' | 'synced' | 'offline';
+export type CloudSyncStatus = 'syncing' | 'synced' | 'offline' | 'pending';
 
 const DEFAULT_ADMIN: Account = {
   id: 'admin',
@@ -88,6 +92,15 @@ function saveToStorage<T>(key: string, data: T) {
   localStorage.setItem(key, JSON.stringify(data));
 }
 
+// 保存失败提示（节流，避免刷屏）
+let lastFailToast = 0;
+function notifySaveFailed() {
+  const now = Date.now();
+  if (now - lastFailToast < 5000) return;
+  lastFailToast = now;
+  toast.error('云端保存失败，已暂存在本机，联网后会自动补传', { duration: 5000 });
+}
+
 export function useStore() {
   const [teachers, setTeachers] = useState<Teacher[]>(() => loadFromStorage(STORAGE_KEYS.teachers, seedTeachers));
   const [campuses, setCampuses] = useState<Campus[]>(() => loadFromStorage(STORAGE_KEYS.campuses, seedCampuses));
@@ -112,6 +125,9 @@ export function useStore() {
 
   // ===== 云端同步 =====
   const [cloudStatus, setCloudStatus] = useState<CloudSyncStatus>('syncing');
+  const [pendingCount, setPendingCount] = useState<number>(() => pendingOpCount());
+  // 云端数据是否已经加载完成（未加载完成前不要录入，否则会基于不完整的数据保存）
+  const [cloudLoaded, setCloudLoaded] = useState(false);
 
   // refs：用于在回调中读取最新状态（避免闭包陷阱）
   const teachersRef = useRef(teachers); teachersRef.current = teachers;
@@ -123,32 +139,72 @@ export function useStore() {
   const monthlyRecordsRef = useRef(monthlyRecords); monthlyRecordsRef.current = monthlyRecords;
   const partTimeRecordsRef = useRef(partTimeRecords); partTimeRecordsRef.current = partTimeRecords;
 
-  // 启动时：拉取云端所有逐行数据
+  // 订阅"待同步数量"变化
+  useEffect(() => {
+    const unsub = onPendingChange(() => setPendingCount(pendingOpCount()));
+    return () => { unsub(); };
+  }, []);
+
+  // 启动时：先补传离线期间积压的写操作，再拉取云端全量数据
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // 1) 补传队列
+      const stillPending = await flushPending().catch(() => -1);
+      if (cancelled) return;
+      if (stillPending > 0) {
+        // 本机还有没同步出去的编辑 —— 绝不能用云端数据覆盖本地，否则就是"昨天的数据不见了"
+        setPendingCount(stillPending);
+        setCloudStatus('pending');
+        setCloudLoaded(true);
+        return;
+      }
+
+      // 2) 拉取云端
       const res = await fetchAllCloudData();
       if (cancelled) return;
       if (!res.ok) {
         setCloudStatus('offline');
+        setCloudLoaded(true);
         return;
       }
       const cloud = res.data;
       if (!cloud) {
         setCloudStatus('synced');
+        setCloudLoaded(true);
         return;
       }
       setTeachers(cloud.teachers);
       setClasses(cloud.classes);
       setStudents(cloud.students);
       setCampuses(cloud.campuses);
-      setAccounts(cloud.accounts);
+      // 账号：云端为空时不要覆盖本地，避免把自己锁在门外
+      if (cloud.accounts.length > 0) setAccounts(cloud.accounts);
       if (cloud.salaryStandard) setSalaryStandard(cloud.salaryStandard);
       setMonthlyRecords(cloud.monthlyRecords);
       setPartTimeRecords(cloud.partTimeRecords);
       setCloudStatus('synced');
+      setCloudLoaded(true);
     })();
     return () => { cancelled = true; };
+  }, []);
+
+  // 后台定时补传 + 网络恢复时立即补传
+  useEffect(() => {
+    const tick = async () => {
+      if (pendingOpCount() === 0) return;
+      const left = await flushPending().catch(() => -1);
+      if (left < 0) return;
+      setPendingCount(left);
+      if (left === 0) setCloudStatus('synced');
+    };
+    const timer = window.setInterval(() => { void tick(); }, 30000);
+    const onOnline = () => { void tick(); };
+    window.addEventListener('online', onOnline);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('online', onOnline);
+    };
   }, []);
 
   // localStorage 持久化
@@ -161,94 +217,99 @@ export function useStore() {
   useEffect(() => { saveToStorage(STORAGE_KEYS.monthlyRecords, monthlyRecords); }, [monthlyRecords]);
   useEffect(() => { saveToStorage(STORAGE_KEYS.partTimeRecords, partTimeRecords); }, [partTimeRecords]);
 
+  /** 统一的云端写入：失败会提示，并已自动入离线队列 */
+  const pushCloud = useCallback((p: Promise<boolean>) => {
+    void p.then(ok => { if (!ok) notifySaveFailed(); }).catch(() => notifySaveFailed());
+  }, []);
+
   // ===== 老师操作 =====
   const addTeacher = useCallback((data: Omit<Teacher, 'id' | 'createdAt'>) => {
     const teacher: Teacher = { ...data, id: generateId(), createdAt: new Date().toISOString() };
     setTeachers(prev => [...prev, teacher]);
-    void cloudSync.upsertTeacher(teacher);
-  }, []);
+    pushCloud(cloudSync.upsertTeacher(teacher));
+  }, [pushCloud]);
 
   const updateTeacher = useCallback((id: string, data: Partial<Omit<Teacher, 'id' | 'createdAt'>>) => {
     const existing = teachersRef.current.find(t => t.id === id);
     if (!existing) return;
     const updated = { ...existing, ...data };
     setTeachers(prev => prev.map(t => t.id === id ? updated : t));
-    void cloudSync.upsertTeacher(updated);
-  }, []);
+    pushCloud(cloudSync.upsertTeacher(updated));
+  }, [pushCloud]);
 
   const deleteTeacher = useCallback((id: string) => {
-    void cloudSync.deleteTeacher(id);
+    pushCloud(cloudSync.deleteTeacher(id));
     setTeachers(prev => prev.filter(t => t.id !== id));
     setClasses(prev => prev.map(c => c.teacherId === id ? { ...c, teacherId: '' } : c));
     const affected = classesRef.current.filter(c => c.teacherId === id);
-    for (const c of affected) void cloudSync.upsertClass({ ...c, teacherId: '' });
-  }, []);
+    for (const c of affected) pushCloud(cloudSync.upsertClass({ ...c, teacherId: '' }));
+  }, [pushCloud]);
 
   // ===== 校区操作 =====
   const addCampus = useCallback((data: Omit<Campus, 'id' | 'createdAt'>) => {
     const campus: Campus = { ...data, id: generateId(), createdAt: new Date().toISOString() };
     setCampuses(prev => [...prev, campus]);
-    void cloudSync.upsertCampus(campus);
-  }, []);
+    pushCloud(cloudSync.upsertCampus(campus));
+  }, [pushCloud]);
 
   const updateCampus = useCallback((id: string, data: Partial<Omit<Campus, 'id' | 'createdAt'>>) => {
     const existing = campusesRef.current.find(c => c.id === id);
     if (!existing) return;
     const updated = { ...existing, ...data };
     setCampuses(prev => prev.map(c => c.id === id ? updated : c));
-    void cloudSync.upsertCampus(updated);
-  }, []);
+    pushCloud(cloudSync.upsertCampus(updated));
+  }, [pushCloud]);
 
   const deleteCampus = useCallback((id: string) => {
-    void cloudSync.deleteCampus(id);
+    pushCloud(cloudSync.deleteCampus(id));
     setCampuses(prev => prev.filter(c => c.id !== id));
     setClasses(prev => prev.map(c => c.campusId === id ? { ...c, campusId: '' } : c));
     const affected = classesRef.current.filter(c => c.campusId === id);
-    for (const c of affected) void cloudSync.upsertClass({ ...c, campusId: '' });
-  }, []);
+    for (const c of affected) pushCloud(cloudSync.upsertClass({ ...c, campusId: '' }));
+  }, [pushCloud]);
 
   // ===== 班级操作 =====
   const addClass = useCallback((data: Omit<ClassInfo, 'id' | 'createdAt'>) => {
     const cls: ClassInfo = { ...data, id: generateId(), createdAt: new Date().toISOString() };
     setClasses(prev => [...prev, cls]);
-    void cloudSync.upsertClass(cls);
-  }, []);
+    pushCloud(cloudSync.upsertClass(cls));
+  }, [pushCloud]);
 
   const updateClass = useCallback((id: string, data: Partial<Omit<ClassInfo, 'id' | 'createdAt'>>) => {
     const existing = classesRef.current.find(c => c.id === id);
     if (!existing) return;
     const updated = { ...existing, ...data };
     setClasses(prev => prev.map(c => c.id === id ? updated : c));
-    void cloudSync.upsertClass(updated);
-  }, []);
+    pushCloud(cloudSync.upsertClass(updated));
+  }, [pushCloud]);
 
   const deleteClass = useCallback((id: string) => {
-    void cloudSync.deleteClass(id);
+    pushCloud(cloudSync.deleteClass(id));
     setClasses(prev => prev.filter(c => c.id !== id));
     setStudents(prev => prev.map(s => s.classId === id ? { ...s, classId: '' } : s));
     const affected = studentsRef.current.filter(s => s.classId === id);
-    for (const s of affected) void cloudSync.upsertStudent({ ...s, classId: '' });
-  }, []);
+    for (const s of affected) pushCloud(cloudSync.upsertStudent({ ...s, classId: '' }));
+  }, [pushCloud]);
 
   // ===== 学生操作 =====
   const addStudent = useCallback((data: Omit<Student, 'id' | 'createdAt'>) => {
     const student: Student = { ...data, id: generateId(), createdAt: new Date().toISOString() };
     setStudents(prev => [...prev, student]);
-    void cloudSync.upsertStudent(student);
-  }, []);
+    pushCloud(cloudSync.upsertStudent(student));
+  }, [pushCloud]);
 
   const updateStudent = useCallback((id: string, data: Partial<Omit<Student, 'id' | 'createdAt'>>) => {
     const existing = studentsRef.current.find(s => s.id === id);
     if (!existing) return;
     const updated = { ...existing, ...data };
     setStudents(prev => prev.map(s => s.id === id ? updated : s));
-    void cloudSync.upsertStudent(updated);
-  }, []);
+    pushCloud(cloudSync.upsertStudent(updated));
+  }, [pushCloud]);
 
   const deleteStudent = useCallback((id: string) => {
-    void cloudSync.deleteStudent(id);
+    pushCloud(cloudSync.deleteStudent(id));
     setStudents(prev => prev.filter(s => s.id !== id));
-  }, []);
+  }, [pushCloud]);
 
   // ===== 认证 =====
   const currentUser = accounts.find(a => a.id === currentUserId) || null;
@@ -286,29 +347,29 @@ export function useStore() {
   const addAccount = useCallback((data: { username: string; password: string; permissions: PermissionId[] }) => {
     const acc: Account = { ...data, id: generateId(), role: 'sub', createdAt: new Date().toISOString() };
     setAccounts(prev => [...prev, acc]);
-    void cloudSync.upsertAccount(acc);
-  }, []);
+    pushCloud(cloudSync.upsertAccount(acc));
+  }, [pushCloud]);
 
   const updateAccount = useCallback((id: string, data: Partial<Omit<Account, 'id' | 'createdAt' | 'role'>>) => {
     const existing = accountsRef.current.find(a => a.id === id);
     if (!existing) return;
     const updated = { ...existing, ...data };
     setAccounts(prev => prev.map(a => a.id === id ? updated : a));
-    void cloudSync.upsertAccount(updated);
-  }, []);
+    pushCloud(cloudSync.upsertAccount(updated));
+  }, [pushCloud]);
 
   const deleteAccount = useCallback((id: string) => {
-    void cloudSync.deleteAccount(id);
+    pushCloud(cloudSync.deleteAccount(id));
     setAccounts(prev => prev.filter(a => a.id !== id));
-  }, []);
+  }, [pushCloud]);
 
   const updateOwnAccount = useCallback((username: string, password: string) => {
     const existing = accountsRef.current.find(a => a.id === currentUserId);
     if (!existing) return;
     const updated = { ...existing, username, password };
     setAccounts(prev => prev.map(a => a.id === currentUserId ? updated : a));
-    void cloudSync.upsertAccount(updated);
-  }, [currentUserId]);
+    pushCloud(cloudSync.upsertAccount(updated));
+  }, [currentUserId, pushCloud]);
 
   const isUsernameTaken = useCallback((username: string, excludeId?: string) => {
     return accountsRef.current.some(a => a.username === username && a.id !== excludeId);
@@ -318,34 +379,54 @@ export function useStore() {
   const updateSalaryStandard = useCallback((key: SalaryCoefficientKey, rows: SalaryStandardData[SalaryCoefficientKey]) => {
     const updated = { ...salaryStandardRef.current, [key]: rows };
     setSalaryStandard(updated);
-    void cloudSync.upsertSalaryStandard(updated);
-  }, []);
+    pushCloud(cloudSync.upsertSalaryStandard(updated));
+  }, [pushCloud]);
 
   const resetSalaryStandard = useCallback((key: SalaryCoefficientKey) => {
     const updated = { ...salaryStandardRef.current, [key]: SEED_SALARY_STANDARD[key].map(r => ({ ...r })) };
     setSalaryStandard(updated);
-    void cloudSync.upsertSalaryStandard(updated);
-  }, []);
+    pushCloud(cloudSync.upsertSalaryStandard(updated));
+  }, [pushCloud]);
 
   // ===== 月度绩效数据操作 =====
   const getMonthlyRecords = useCallback((yearMonth: string): StudentMonthlyRecord[] => {
     return monthlyRecordsRef.current.filter(r => r.yearMonth === yearMonth);
   }, []);
 
+  /**
+   * 保存某老师某周的数据。
+   * ⚠️ 重要：清理旧记录时，必须限定在「本次涉及的老师名下班级」的范围内，
+   * 否则会把其他老师同一周的数据一并删掉（历史 bug，会导致"昨天的数据不见了"）。
+   */
   const saveWeeklyRecords = useCallback((yearMonth: string, week: number, records: StudentMonthlyRecord[]) => {
-    const oldForWeek = monthlyRecordsRef.current.filter(r => r.yearMonth === yearMonth && r.week === week);
+    const touchedClassIds = new Set(records.map(r => r.classId));
+    const involvedTeacherIds = new Set(
+      classesRef.current
+        .filter(c => touchedClassIds.has(c.id))
+        .map(c => c.teacherId)
+        .filter((t): t is string => !!t)
+    );
+    const scopeClassIds = new Set(
+      classesRef.current
+        .filter(c => c.teacherId && involvedTeacherIds.has(c.teacherId))
+        .map(c => c.id)
+    );
+
+    const oldForWeek = monthlyRecordsRef.current.filter(r =>
+      r.yearMonth === yearMonth && r.week === week && scopeClassIds.has(r.classId)
+    );
     const newIds = new Set(records.map(r => r.id));
     for (const old of oldForWeek) {
-      if (!newIds.has(old.id)) void cloudSync.deleteMonthlyRecord(old.id);
+      if (!newIds.has(old.id)) pushCloud(cloudSync.deleteMonthlyRecord(old.id));
     }
     for (const rec of records) {
-      void cloudSync.upsertMonthlyRecord(rec);
+      pushCloud(cloudSync.upsertMonthlyRecord(rec));
     }
     setMonthlyRecords(prev => {
-      const others = prev.filter(r => !(r.yearMonth === yearMonth && r.week === week));
+      const others = prev.filter(r => !(r.yearMonth === yearMonth && r.week === week && scopeClassIds.has(r.classId)));
       return [...others, ...records];
     });
-  }, []);
+  }, [pushCloud]);
 
   // ===== D级兼职老师出勤记录 =====
   const savePartTimeRecords = useCallback((yearMonth: string, week: number, records: PartTimeWeeklyRecord[]) => {
@@ -355,20 +436,20 @@ export function useStore() {
     );
     const newIds = new Set(records.map(r => r.id));
     for (const old of oldForWeek) {
-      if (!newIds.has(old.id)) void cloudSync.deletePartTimeRecord(old.id);
+      if (!newIds.has(old.id)) pushCloud(cloudSync.deletePartTimeRecord(old.id));
     }
     for (const rec of records) {
-      void cloudSync.upsertPartTimeRecord(rec);
+      pushCloud(cloudSync.upsertPartTimeRecord(rec));
     }
     setPartTimeRecords(prev => {
       const others = prev.filter(r => !(r.yearMonth === yearMonth && r.week === week && teacherIds.has(r.teacherId)));
       return [...others, ...records];
     });
-  }, []);
+  }, [pushCloud]);
 
   return {
     teachers, classes, students, campuses, accounts, currentUser, salaryStandard, monthlyRecords, partTimeRecords,
-    cloudStatus,
+    cloudStatus, cloudLoaded, pendingCount,
     addTeacher, updateTeacher, deleteTeacher,
     addClass, updateClass, deleteClass,
     addStudent, updateStudent, deleteStudent,

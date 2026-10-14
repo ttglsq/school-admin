@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { ClipboardList, Save, ChevronDown, ChevronRight, GraduationCap, School, Calendar } from 'lucide-react';
+import { ClipboardList, Save, ChevronDown, ChevronRight, GraduationCap, School, Calendar, Loader2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -20,6 +20,11 @@ interface PerformanceEntryPageProps {
   onSaveWeeklyRecords: (yearMonth: string, week: number, records: StudentMonthlyRecord[]) => void;
   partTimeRecords: PartTimeWeeklyRecord[];
   onSavePartTimeRecords: (yearMonth: string, week: number, records: PartTimeWeeklyRecord[]) => void;
+  // 云端数据是否已加载完成：未完成前不允许录入，否则会基于"不完整的学生名单"保存，造成数据看起来丢失
+  cloudLoaded: boolean;
+  cloudStatus: 'syncing' | 'synced' | 'offline' | 'pending';
+  // 还没成功写入云端的操作数
+  pendingCount: number;
 }
 
 // 当前年月字符串 "YYYY-MM"
@@ -186,8 +191,41 @@ export default function PerformanceEntryPage(props: PerformanceEntryPageProps) {
     0,
   );
 
+  // 云端数据还没加载完 → 禁止录入，否则会基于不完整的学生名单保存
+  if (!props.cloudLoaded) {
+    return (
+      <div className="max-w-6xl mx-auto">
+        <Card>
+          <CardContent className="p-12 text-center text-muted-foreground">
+            <Loader2 className="w-10 h-10 mx-auto mb-3 animate-spin opacity-50" />
+            <p className="font-medium text-foreground">正在从云端加载数据…</p>
+            <p className="text-xs mt-2 opacity-70">加载完成前请不要录入数据，否则可能出现名单不全导致的保存异常</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 max-w-6xl mx-auto">
+      {props.cloudStatus === 'offline' && (
+        <div className="flex items-start gap-2 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+          <div>
+            <div className="font-medium">云端未连接，当前显示的是本机缓存数据</div>
+            <div className="text-xs mt-0.5">可以继续录入，数据会先存在本机，联网后自动补传到云端。</div>
+          </div>
+        </div>
+      )}
+      {props.cloudStatus === 'pending' && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+          <div>
+            <div className="font-medium">有 {props.pendingCount} 条改动还没写入云端</div>
+            <div className="text-xs mt-0.5">已暂存在本机，联网后会自动补传，请不要清除浏览器数据。</div>
+          </div>
+        </div>
+      )}
       {/* 顶部：年月 + 周次选择 */}
       <Card>
         <CardContent className="p-4 flex flex-wrap items-center gap-4">
