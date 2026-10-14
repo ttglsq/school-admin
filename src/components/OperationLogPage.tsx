@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import {
-  type OperationLog, type LogAction, ACTION_LABELS, ENTITY_LABELS, RESULT_LABELS,
+  type OperationLog, type LogAction, type LogEntity, ACTION_LABELS, ENTITY_LABELS, RESULT_LABELS,
   fetchCloudLogs, getLocalLogs, clearLocalLogs, mergeLogs, onLogChange,
 } from '@/lib/opLog';
 
@@ -38,6 +38,7 @@ export default function OperationLogPage() {
   const [cloudOk, setCloudOk] = useState(true);
   const [keyword, setKeyword] = useState('');
   const [actionFilter, setActionFilter] = useState<'all' | LogAction>('all');
+  const [entityFilter, setEntityFilter] = useState<'all' | LogEntity>('all');
   const [onlyProblems, setOnlyProblems] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -63,12 +64,13 @@ export default function OperationLogPage() {
     const kw = keyword.trim().toLowerCase();
     return merged.filter(l => {
       if (actionFilter !== 'all' && l.action !== actionFilter) return false;
+      if (entityFilter !== 'all' && l.entity !== entityFilter) return false;
       if (onlyProblems && l.result !== 'failed' && l.result !== 'queued' && l.action !== 'error') return false;
       if (!kw) return true;
       return [l.actor, l.target, l.detail, ENTITY_LABELS[l.entity], ACTION_LABELS[l.action]]
         .filter(Boolean).join(' ').toLowerCase().includes(kw);
     });
-  }, [merged, keyword, actionFilter, onlyProblems]);
+  }, [merged, keyword, actionFilter, entityFilter, onlyProblems]);
 
   const problemCount = useMemo(
     () => merged.filter(l => l.result === 'failed' || l.result === 'queued' || l.action === 'error').length,
@@ -155,41 +157,69 @@ export default function OperationLogPage() {
 
       {/* 筛选 */}
       <Card>
-        <CardContent className="p-4 flex flex-wrap items-center gap-3">
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={keyword}
-              onChange={e => setKeyword(e.target.value)}
-              placeholder="搜索对象、操作人、内容…"
-              className="pl-9 w-64"
-            />
+        <CardContent className="p-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={keyword}
+                onChange={e => setKeyword(e.target.value)}
+                placeholder="搜索学生/班级/老师姓名、操作人、改动内容…"
+                className="pl-9 w-72"
+              />
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs text-muted-foreground mr-0.5">操作</span>
+              {(['all', 'add', 'update', 'delete', 'save', 'sync', 'error'] as const).map(a => (
+                <button
+                  key={a}
+                  onClick={() => setActionFilter(a)}
+                  className={cn(
+                    'px-3 py-1.5 rounded-md text-xs font-medium border transition-colors',
+                    actionFilter === a
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-background border-input hover:bg-muted',
+                  )}
+                >
+                  {a === 'all' ? '全部' : ACTION_LABELS[a]}
+                </button>
+              ))}
+            </div>
+            <label className="flex items-center gap-2 text-sm cursor-pointer select-none ml-auto">
+              <input
+                type="checkbox"
+                checked={onlyProblems}
+                onChange={e => setOnlyProblems(e.target.checked)}
+                className="w-4 h-4 accent-orange-600"
+              />
+              只看异常／待补传
+            </label>
           </div>
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {(['all', 'add', 'update', 'delete', 'save', 'sync', 'error'] as const).map(a => (
+
+          <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t">
+            <span className="text-xs text-muted-foreground mr-0.5">模块</span>
+            <button
+              onClick={() => setEntityFilter('all')}
+              className={cn(
+                'px-3 py-1.5 rounded-md text-xs font-medium border transition-colors',
+                entityFilter === 'all' ? 'bg-slate-700 text-white border-slate-700' : 'bg-background border-input hover:bg-muted',
+              )}
+            >
+              全部
+            </button>
+            {(['monthlyRecord', 'partTimeRecord', 'student', 'class', 'teacher', 'campus', 'account', 'salary', 'cloud', 'system'] as const).map(e => (
               <button
-                key={a}
-                onClick={() => setActionFilter(a)}
+                key={e}
+                onClick={() => setEntityFilter(e)}
                 className={cn(
                   'px-3 py-1.5 rounded-md text-xs font-medium border transition-colors',
-                  actionFilter === a
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-background border-input hover:bg-muted',
+                  entityFilter === e ? 'bg-slate-700 text-white border-slate-700' : 'bg-background border-input hover:bg-muted',
                 )}
               >
-                {a === 'all' ? '全部' : ACTION_LABELS[a]}
+                {ENTITY_LABELS[e]}
               </button>
             ))}
           </div>
-          <label className="flex items-center gap-2 text-sm cursor-pointer select-none ml-auto">
-            <input
-              type="checkbox"
-              checked={onlyProblems}
-              onChange={e => setOnlyProblems(e.target.checked)}
-              className="w-4 h-4 accent-orange-600"
-            />
-            只看异常／待补传
-          </label>
         </CardContent>
       </Card>
 
@@ -220,7 +250,7 @@ export default function OperationLogPage() {
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">{ENTITY_LABELS[l.entity]}</TableCell>
                   <TableCell className="text-sm font-medium">{l.target || '—'}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{l.detail || '—'}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground whitespace-normal break-words max-w-lg">{l.detail || '—'}</TableCell>
                   <TableCell className="text-xs">
                     {l.result === 'ok' && <span className="text-emerald-600">已写入</span>}
                     {l.result === 'queued' && <span className="text-orange-600 font-medium">待补传</span>}

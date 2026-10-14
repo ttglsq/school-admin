@@ -118,6 +118,48 @@ function diffSummary(before: Record<string, unknown>, after: Record<string, unkn
   return parts.join('；') || '（无字段变化）';
 }
 
+/** 把一条绩效记录压成便于阅读的短文本：听力45/复述√ */
+function recText(r: StudentMonthlyRecord): string {
+  return `${r.hearingX ?? '空'}/复述${r.retell ? '√' : '×'}`;
+}
+
+/**
+ * 对比本次保存与前一次的差异，生成「谁从多少改成了多少」的摘要。
+ * 这是排查"我录的数据怎么不见了"最关键的一行信息。
+ */
+function summarizeRecordChanges(
+  oldRecs: StudentMonthlyRecord[],
+  newRecs: StudentMonthlyRecord[],
+  nameOf: (studentId: string) => string,
+  maxItems = 10,
+): string {
+  const oldMap = new Map(oldRecs.map(r => [r.id, r]));
+  const parts: string[] = [];
+  let total = 0;
+  for (const n of newRecs) {
+    const o = oldMap.get(n.id);
+    if (!o) {
+      total++;
+      if (parts.length < maxItems) parts.push(`${nameOf(n.studentId)} 新增 ${recText(n)}`);
+      continue;
+    }
+    const before = recText(o);
+    const after = recText(n);
+    if (before !== after) {
+      total++;
+      if (parts.length < maxItems) parts.push(`${nameOf(n.studentId)} ${before}→${after}`);
+    }
+  }
+  // 本次保存后完全没有值的记录（提醒"这次是不是录错了"）
+  const blank = newRecs.filter(r => r.hearingX == null && !r.retell).length;
+  const head = total === 0
+    ? '内容无变化'
+    : `改动 ${total} 处：${parts.join('、')}${total > parts.length ? ` …等共 ${total} 处` : ''}`;
+  return newRecs.length > 0 && blank === newRecs.length
+    ? `${head}｜⚠️ 本次 ${newRecs.length} 条全部为空值`
+    : head;
+}
+
 // 保存失败提示（节流，避免刷屏）
 let lastFailToast = 0;
 function notifySaveFailed() {
@@ -539,8 +581,20 @@ export function useStore() {
       .filter(Boolean)
       .join('、') || '（未识别老师）';
     const filled = records.filter(r => r.hearingX != null || r.retell).length;
-    log('save', 'monthlyRecord', `${yearMonth} 第${week}周 · ${teacherNames}`,
-      `写入 ${records.length} 条（有数据 ${filled} 条）${removed > 0 ? `，清理 ${removed} 条` : ''}`,
+    const stuName = (sid: string) => studentsRef.current.find(s => s.id === sid)?.name || '（已删学生）';
+    const changeText = summarizeRecordChanges(oldForWeek, records, stuName);
+    const removedNames = oldForWeek
+      .filter(r => !newIds.has(r.id))
+      .slice(0, 5)
+      .map(r => stuName(r.studentId))
+      .join('、');
+    const detail = [
+      `写入 ${records.length} 条（有数据 ${filled} 条）`,
+      changeText,
+      removed > 0 ? `另移除 ${removed} 条${removedNames ? `（${removedNames}）` : ''}` : '',
+    ].filter(Boolean).join('｜');
+
+    log('save', 'monthlyRecord', `${yearMonth} 第${week}周 · ${teacherNames}`, detail,
       Promise.all(writes).then(a => a.every(Boolean)));
   }, [pushCloud, log]);
 
@@ -569,8 +623,24 @@ export function useStore() {
       .filter(Boolean)
       .join('、') || '（未识别老师）';
     const attended = records.filter(r => r.attended).length;
-    log('save', 'partTimeRecord', `${yearMonth} 第${week}周 · ${teacherNames}`,
-      `出勤记录 ${records.length} 条（上课 ${attended} 条）${removed > 0 ? `，清理 ${removed} 条` : ''}`,
+
+    // 出勤变化的明细：哪个班从"未上课"变成"上课"
+    const oldMap = new Map(oldForWeek.map(r => [r.id, r]));
+    const clsName = (cid: string) => classesRef.current.find(c => c.id === cid)?.name || '（已删班级）';
+    const changes: string[] = [];
+    for (const n of records) {
+      const o = oldMap.get(n.id);
+      const before = o ? (o.attended ? '上课' : '未上课') : '新增';
+      const after = n.attended ? '上课' : '未上课';
+      if (before !== after && changes.length < 8) changes.push(`${clsName(n.classId)} ${before}→${after}`);
+    }
+    const detail = [
+      `出勤记录 ${records.length} 条（上课 ${attended} 条）`,
+      changes.length > 0 ? `改动：${changes.join('、')}` : '内容无变化',
+      removed > 0 ? `另移除 ${removed} 条` : '',
+    ].filter(Boolean).join('｜');
+
+    log('save', 'partTimeRecord', `${yearMonth} 第${week}周 · ${teacherNames}`, detail,
       Promise.all(writes).then(a => a.every(Boolean)));
   }, [pushCloud, log]);
 

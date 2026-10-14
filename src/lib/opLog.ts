@@ -170,7 +170,8 @@ export async function fetchCloudLogs(limit = 500): Promise<OperationLog[]> {
     if (error) throw error;
     return (data || [])
       .map(r => r.data as OperationLog)
-      .filter(x => x && typeof x === 'object' && x.id && x.ts);
+      .filter(x => x && typeof x === 'object' && x.id && x.ts)
+      .filter(x => (x as unknown as Record<string, unknown>).__deleted !== true); // 跳过已清理的日志
   } catch (e) {
     console.warn('[log] 拉取云端日志失败:', e);
     return [];
