@@ -152,9 +152,10 @@ export function useStore() {
       // 1) 补传队列
       const stillPending = await flushPending().catch(() => -1);
       if (cancelled) return;
-      if (stillPending > 0) {
-        // 本机还有没同步出去的编辑 —— 绝不能用云端数据覆盖本地，否则就是"昨天的数据不见了"
-        setPendingCount(stillPending);
+      if (stillPending !== 0) {
+        // 本机还有没同步出去的编辑（或补传状态未知）—— 绝不能用云端数据覆盖本地，
+        // 否则就会出现"昨天录的数据今天不见了"
+        setPendingCount(stillPending > 0 ? stillPending : pendingOpCount());
         setCloudStatus('pending');
         setCloudLoaded(true);
         return;
