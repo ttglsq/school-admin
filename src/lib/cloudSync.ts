@@ -130,7 +130,7 @@ export async function flushPending(): Promise<number> {
 
 // ============ 读 ============
 
-/** 分页拉取除旧备份(id=main)之外的全部行 */
+/** 分页拉取除旧备份(id=main)与操作日志(log:*)之外的全部行 */
 async function fetchAllRows(): Promise<{ id: string; data: unknown }[]> {
   const out: { id: string; data: unknown }[] = [];
   for (let pass = 0; pass < 60; pass++) {
@@ -141,6 +141,7 @@ async function fetchAllRows(): Promise<{ id: string; data: unknown }[]> {
         .from(TABLE)
         .select('id, data')
         .neq('id', 'main')
+        .not('id', 'like', 'log:*')   // 操作日志单独按需拉取，不参与主数据加载
         .order('id', { ascending: true })
         .range(from, to),
       25000,

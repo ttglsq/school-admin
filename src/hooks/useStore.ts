@@ -7,6 +7,7 @@ import {
   fetchAllCloudData, fetchCloudAccounts, cloudSync,
   flushPending, pendingOpCount, onPendingChange,
 } from '@/lib/cloudSync';
+import { appendLog } from '@/lib/opLog';
 
 const STORAGE_KEYS = {
   teachers: 'school_teachers',
@@ -92,6 +93,31 @@ function saveToStorage<T>(key: string, data: T) {
   localStorage.setItem(key, JSON.stringify(data));
 }
 
+// ===== 变更摘要（写进操作日志，方便事后追溯"到底改了什么"）=====
+function fmtVal(v: unknown): string {
+  if (v === null || v === undefined || v === '') return '空';
+  if (typeof v === 'boolean') return v ? '是' : '否';
+  return String(v);
+}
+
+function diffSummary(before: Record<string, unknown>, after: Record<string, unknown>): string {
+  const parts: string[] = [];
+  for (const k of Object.keys(after)) {
+    if (k === 'id' || k === 'createdAt') continue;
+    const a = before[k];
+    const b = after[k];
+    if (JSON.stringify(a) !== JSON.stringify(b)) {
+      // 长 id 只留后 6 位，日志更易读
+      const shorten = (v: unknown) => {
+        const s = fmtVal(v);
+        return s.length > 10 && s.includes('-') ? s.slice(-6) : s;
+      };
+      parts.push(`${k}: ${shorten(a)} → ${shorten(b)}`);
+    }
+  }
+  return parts.join('；') || '（无字段变化）';
+}
+
 // 保存失败提示（节流，避免刷屏）
 let lastFailToast = 0;
 function notifySaveFailed() {
@@ -139,6 +165,20 @@ export function useStore() {
   const monthlyRecordsRef = useRef(monthlyRecords); monthlyRecordsRef.current = monthlyRecords;
   const partTimeRecordsRef = useRef(partTimeRecords); partTimeRecordsRef.current = partTimeRecords;
 
+  // 操作人用户名（写入操作日志）
+  const actorRef = useRef('未登录');
+
+  /** 记一条操作日志，并追踪云端写入结果 */
+  const log = useCallback((
+    action: Parameters<typeof appendLog>[0]['action'],
+    entity: Parameters<typeof appendLog>[0]['entity'],
+    target: string,
+    detail?: string,
+    syncPromise?: Promise<boolean>,
+  ) => {
+    appendLog({ actor: actorRef.current, action, entity, target, detail }, syncPromise);
+  }, []);
+
   // 订阅"待同步数量"变化
   useEffect(() => {
     const unsub = onPendingChange(() => setPendingCount(pendingOpCount()));
@@ -158,6 +198,7 @@ export function useStore() {
         setPendingCount(stillPending > 0 ? stillPending : pendingOpCount());
         setCloudStatus('pending');
         setCloudLoaded(true);
+        log('sync', 'cloud', '跳过云端覆盖', `本机有 ${pendingOpCount()} 条改动尚未写入云端，为避免覆盖已保留本机数据`);
         return;
       }
 
@@ -167,12 +208,14 @@ export function useStore() {
       if (!res.ok) {
         setCloudStatus('offline');
         setCloudLoaded(true);
+        log('error', 'cloud', '云端连接失败', '当前显示的是本机缓存数据，可能不是最新；此时录入的数据会暂存本机并自动补传');
         return;
       }
       const cloud = res.data;
       if (!cloud) {
         setCloudStatus('synced');
         setCloudLoaded(true);
+        log('sync', 'cloud', '云端无数据', '本次未加载到任何业务数据');
         return;
       }
       setTeachers(cloud.teachers);
@@ -186,18 +229,26 @@ export function useStore() {
       setPartTimeRecords(cloud.partTimeRecords);
       setCloudStatus('synced');
       setCloudLoaded(true);
+      log('sync', 'cloud', '已从云端加载最新数据',
+        `老师 ${cloud.teachers.length}｜班级 ${cloud.classes.length}｜学生 ${cloud.students.length}｜绩效 ${cloud.monthlyRecords.length}`);
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [log]);
 
   // 后台定时补传 + 网络恢复时立即补传
   useEffect(() => {
     const tick = async () => {
-      if (pendingOpCount() === 0) return;
+      const before = pendingOpCount();
+      if (before === 0) return;
       const left = await flushPending().catch(() => -1);
       if (left < 0) return;
       setPendingCount(left);
-      if (left === 0) setCloudStatus('synced');
+      if (left === 0) {
+        setCloudStatus('synced');
+        log('sync', 'cloud', '补传完成', `${before} 条积压改动已成功写入云端`);
+      } else if (left < before) {
+        log('sync', 'cloud', '部分补传成功', `还剩 ${left} 条待补传`);
+      }
     };
     const timer = window.setInterval(() => { void tick(); }, 30000);
     const onOnline = () => { void tick(); };
@@ -206,7 +257,7 @@ export function useStore() {
       window.clearInterval(timer);
       window.removeEventListener('online', onOnline);
     };
-  }, []);
+  }, [log]);
 
   // localStorage 持久化
   useEffect(() => { saveToStorage(STORAGE_KEYS.teachers, teachers); }, [teachers]);
@@ -227,94 +278,124 @@ export function useStore() {
   const addTeacher = useCallback((data: Omit<Teacher, 'id' | 'createdAt'>) => {
     const teacher: Teacher = { ...data, id: generateId(), createdAt: new Date().toISOString() };
     setTeachers(prev => [...prev, teacher]);
-    pushCloud(cloudSync.upsertTeacher(teacher));
-  }, [pushCloud]);
+    const p = cloudSync.upsertTeacher(teacher);
+    pushCloud(p);
+    log('add', 'teacher', teacher.name, `等级${teacher.level}｜电话${teacher.phone || '未填'}`, p);
+  }, [pushCloud, log]);
 
   const updateTeacher = useCallback((id: string, data: Partial<Omit<Teacher, 'id' | 'createdAt'>>) => {
     const existing = teachersRef.current.find(t => t.id === id);
     if (!existing) return;
     const updated = { ...existing, ...data };
     setTeachers(prev => prev.map(t => t.id === id ? updated : t));
-    pushCloud(cloudSync.upsertTeacher(updated));
-  }, [pushCloud]);
+    const p = cloudSync.upsertTeacher(updated);
+    pushCloud(p);
+    log('update', 'teacher', updated.name, diffSummary(existing as unknown as Record<string, unknown>, updated as unknown as Record<string, unknown>), p);
+  }, [pushCloud, log]);
 
   const deleteTeacher = useCallback((id: string) => {
-    pushCloud(cloudSync.deleteTeacher(id));
+    const target = teachersRef.current.find(t => t.id === id);
+    const p = cloudSync.deleteTeacher(id);
+    pushCloud(p);
+    log('delete', 'teacher', target?.name || id, `同时解除 ${classesRef.current.filter(c => c.teacherId === id).length} 个班级的任课老师`, p);
     setTeachers(prev => prev.filter(t => t.id !== id));
     setClasses(prev => prev.map(c => c.teacherId === id ? { ...c, teacherId: '' } : c));
     const affected = classesRef.current.filter(c => c.teacherId === id);
     for (const c of affected) pushCloud(cloudSync.upsertClass({ ...c, teacherId: '' }));
-  }, [pushCloud]);
+  }, [pushCloud, log]);
 
   // ===== 校区操作 =====
   const addCampus = useCallback((data: Omit<Campus, 'id' | 'createdAt'>) => {
     const campus: Campus = { ...data, id: generateId(), createdAt: new Date().toISOString() };
     setCampuses(prev => [...prev, campus]);
-    pushCloud(cloudSync.upsertCampus(campus));
-  }, [pushCloud]);
+    const p = cloudSync.upsertCampus(campus);
+    pushCloud(p);
+    log('add', 'campus', campus.name, campus.address || '', p);
+  }, [pushCloud, log]);
 
   const updateCampus = useCallback((id: string, data: Partial<Omit<Campus, 'id' | 'createdAt'>>) => {
     const existing = campusesRef.current.find(c => c.id === id);
     if (!existing) return;
     const updated = { ...existing, ...data };
     setCampuses(prev => prev.map(c => c.id === id ? updated : c));
-    pushCloud(cloudSync.upsertCampus(updated));
-  }, [pushCloud]);
+    const p = cloudSync.upsertCampus(updated);
+    pushCloud(p);
+    log('update', 'campus', updated.name, diffSummary(existing as unknown as Record<string, unknown>, updated as unknown as Record<string, unknown>), p);
+  }, [pushCloud, log]);
 
   const deleteCampus = useCallback((id: string) => {
-    pushCloud(cloudSync.deleteCampus(id));
+    const target = campusesRef.current.find(c => c.id === id);
+    const p = cloudSync.deleteCampus(id);
+    pushCloud(p);
+    log('delete', 'campus', target?.name || id, `同时解除 ${classesRef.current.filter(c => c.campusId === id).length} 个班级的校区归属`, p);
     setCampuses(prev => prev.filter(c => c.id !== id));
     setClasses(prev => prev.map(c => c.campusId === id ? { ...c, campusId: '' } : c));
     const affected = classesRef.current.filter(c => c.campusId === id);
     for (const c of affected) pushCloud(cloudSync.upsertClass({ ...c, campusId: '' }));
-  }, [pushCloud]);
+  }, [pushCloud, log]);
 
   // ===== 班级操作 =====
   const addClass = useCallback((data: Omit<ClassInfo, 'id' | 'createdAt'>) => {
     const cls: ClassInfo = { ...data, id: generateId(), createdAt: new Date().toISOString() };
     setClasses(prev => [...prev, cls]);
-    pushCloud(cloudSync.upsertClass(cls));
-  }, [pushCloud]);
+    const p = cloudSync.upsertClass(cls);
+    pushCloud(p);
+    log('add', 'class', cls.name, `等级${cls.level}｜${cls.duration}课时｜老师 ${teachersRef.current.find(t => t.id === cls.teacherId)?.name || '未分配'}`, p);
+  }, [pushCloud, log]);
 
   const updateClass = useCallback((id: string, data: Partial<Omit<ClassInfo, 'id' | 'createdAt'>>) => {
     const existing = classesRef.current.find(c => c.id === id);
     if (!existing) return;
     const updated = { ...existing, ...data };
     setClasses(prev => prev.map(c => c.id === id ? updated : c));
-    pushCloud(cloudSync.upsertClass(updated));
-  }, [pushCloud]);
+    const p = cloudSync.upsertClass(updated);
+    pushCloud(p);
+    log('update', 'class', updated.name, diffSummary(existing as unknown as Record<string, unknown>, updated as unknown as Record<string, unknown>), p);
+  }, [pushCloud, log]);
 
   const deleteClass = useCallback((id: string) => {
-    pushCloud(cloudSync.deleteClass(id));
+    const target = classesRef.current.find(c => c.id === id);
+    const stuCount = studentsRef.current.filter(s => s.classId === id).length;
+    const p = cloudSync.deleteClass(id);
+    pushCloud(p);
+    log('delete', 'class', target?.name || id, `同时把 ${stuCount} 名学生移出该班`, p);
     setClasses(prev => prev.filter(c => c.id !== id));
     setStudents(prev => prev.map(s => s.classId === id ? { ...s, classId: '' } : s));
     const affected = studentsRef.current.filter(s => s.classId === id);
     for (const s of affected) pushCloud(cloudSync.upsertStudent({ ...s, classId: '' }));
-  }, [pushCloud]);
+  }, [pushCloud, log]);
 
   // ===== 学生操作 =====
   const addStudent = useCallback((data: Omit<Student, 'id' | 'createdAt'>) => {
     const student: Student = { ...data, id: generateId(), createdAt: new Date().toISOString() };
     setStudents(prev => [...prev, student]);
-    pushCloud(cloudSync.upsertStudent(student));
-  }, [pushCloud]);
+    const p = cloudSync.upsertStudent(student);
+    pushCloud(p);
+    log('add', 'student', student.name, `班级 ${classesRef.current.find(c => c.id === student.classId)?.name || '未分配'}`, p);
+  }, [pushCloud, log]);
 
   const updateStudent = useCallback((id: string, data: Partial<Omit<Student, 'id' | 'createdAt'>>) => {
     const existing = studentsRef.current.find(s => s.id === id);
     if (!existing) return;
     const updated = { ...existing, ...data };
     setStudents(prev => prev.map(s => s.id === id ? updated : s));
-    pushCloud(cloudSync.upsertStudent(updated));
-  }, [pushCloud]);
+    const p = cloudSync.upsertStudent(updated);
+    pushCloud(p);
+    log('update', 'student', updated.name, diffSummary(existing as unknown as Record<string, unknown>, updated as unknown as Record<string, unknown>), p);
+  }, [pushCloud, log]);
 
   const deleteStudent = useCallback((id: string) => {
-    pushCloud(cloudSync.deleteStudent(id));
+    const target = studentsRef.current.find(s => s.id === id);
+    const p = cloudSync.deleteStudent(id);
+    pushCloud(p);
+    log('delete', 'student', target?.name || id, `原班级 ${classesRef.current.find(c => c.id === target?.classId)?.name || '未分配'}`, p);
     setStudents(prev => prev.filter(s => s.id !== id));
-  }, [pushCloud]);
+  }, [pushCloud, log]);
 
   // ===== 认证 =====
   const currentUser = accounts.find(a => a.id === currentUserId) || null;
   const isLoggedIn = !!currentUser;
+  actorRef.current = currentUser?.username ?? '未登录';
 
   // 登录：优先用云端最新账号校验（防止本地陈旧数据导致正确密码登不上），失败回退本地
   // 返回 true=成功；'cloud-unreachable'=云端连不上且本地账号也不匹配；false=账号密码错误
@@ -348,29 +429,41 @@ export function useStore() {
   const addAccount = useCallback((data: { username: string; password: string; permissions: PermissionId[] }) => {
     const acc: Account = { ...data, id: generateId(), role: 'sub', createdAt: new Date().toISOString() };
     setAccounts(prev => [...prev, acc]);
-    pushCloud(cloudSync.upsertAccount(acc));
-  }, [pushCloud]);
+    const p = cloudSync.upsertAccount(acc);
+    pushCloud(p);
+    log('add', 'account', acc.username, `子账号｜授权 ${acc.permissions.length} 个板块`, p);
+  }, [pushCloud, log]);
 
   const updateAccount = useCallback((id: string, data: Partial<Omit<Account, 'id' | 'createdAt' | 'role'>>) => {
     const existing = accountsRef.current.find(a => a.id === id);
     if (!existing) return;
     const updated = { ...existing, ...data };
     setAccounts(prev => prev.map(a => a.id === id ? updated : a));
-    pushCloud(cloudSync.upsertAccount(updated));
-  }, [pushCloud]);
+    const p = cloudSync.upsertAccount(updated);
+    pushCloud(p);
+    const detail = data.password !== undefined && data.password !== existing.password
+      ? diffSummary(existing as unknown as Record<string, unknown>, { ...updated, password: '已重置' } as unknown as Record<string, unknown>)
+      : diffSummary(existing as unknown as Record<string, unknown>, updated as unknown as Record<string, unknown>);
+    log('update', 'account', updated.username, detail, p);
+  }, [pushCloud, log]);
 
   const deleteAccount = useCallback((id: string) => {
-    pushCloud(cloudSync.deleteAccount(id));
+    const target = accountsRef.current.find(a => a.id === id);
+    const p = cloudSync.deleteAccount(id);
+    pushCloud(p);
+    log('delete', 'account', target?.username || id, `角色 ${target?.role === 'admin' ? '管理员' : '子账号'}`, p);
     setAccounts(prev => prev.filter(a => a.id !== id));
-  }, [pushCloud]);
+  }, [pushCloud, log]);
 
   const updateOwnAccount = useCallback((username: string, password: string) => {
     const existing = accountsRef.current.find(a => a.id === currentUserId);
     if (!existing) return;
     const updated = { ...existing, username, password };
     setAccounts(prev => prev.map(a => a.id === currentUserId ? updated : a));
-    pushCloud(cloudSync.upsertAccount(updated));
-  }, [currentUserId, pushCloud]);
+    const p = cloudSync.upsertAccount(updated);
+    pushCloud(p);
+    log('update', 'account', username, `修改自己的登录名/密码${username !== existing.username ? `（原登录名 ${existing.username}）` : ''}`, p);
+  }, [currentUserId, pushCloud, log]);
 
   const isUsernameTaken = useCallback((username: string, excludeId?: string) => {
     return accountsRef.current.some(a => a.username === username && a.id !== excludeId);
@@ -380,14 +473,18 @@ export function useStore() {
   const updateSalaryStandard = useCallback((key: SalaryCoefficientKey, rows: SalaryStandardData[SalaryCoefficientKey]) => {
     const updated = { ...salaryStandardRef.current, [key]: rows };
     setSalaryStandard(updated);
-    pushCloud(cloudSync.upsertSalaryStandard(updated));
-  }, [pushCloud]);
+    const p = cloudSync.upsertSalaryStandard(updated);
+    pushCloud(p);
+    log('update', 'salary', `系数 ${key}`, `更新为 ${rows.length} 个档位`, p);
+  }, [pushCloud, log]);
 
   const resetSalaryStandard = useCallback((key: SalaryCoefficientKey) => {
     const updated = { ...salaryStandardRef.current, [key]: SEED_SALARY_STANDARD[key].map(r => ({ ...r })) };
     setSalaryStandard(updated);
-    pushCloud(cloudSync.upsertSalaryStandard(updated));
-  }, [pushCloud]);
+    const p = cloudSync.upsertSalaryStandard(updated);
+    pushCloud(p);
+    log('update', 'salary', `系数 ${key}`, '恢复为默认档位', p);
+  }, [pushCloud, log]);
 
   // ===== 月度绩效数据操作 =====
   const getMonthlyRecords = useCallback((yearMonth: string): StudentMonthlyRecord[] => {
@@ -417,17 +514,35 @@ export function useStore() {
       r.yearMonth === yearMonth && r.week === week && scopeClassIds.has(r.classId)
     );
     const newIds = new Set(records.map(r => r.id));
+    const writes: Promise<boolean>[] = [];
+    let removed = 0;
     for (const old of oldForWeek) {
-      if (!newIds.has(old.id)) pushCloud(cloudSync.deleteMonthlyRecord(old.id));
+      if (!newIds.has(old.id)) {
+        removed++;
+        const dp = cloudSync.deleteMonthlyRecord(old.id);
+        pushCloud(dp);
+        writes.push(dp);
+      }
     }
     for (const rec of records) {
-      pushCloud(cloudSync.upsertMonthlyRecord(rec));
+      const up = cloudSync.upsertMonthlyRecord(rec);
+      pushCloud(up);
+      writes.push(up);
     }
     setMonthlyRecords(prev => {
       const others = prev.filter(r => !(r.yearMonth === yearMonth && r.week === week && scopeClassIds.has(r.classId)));
       return [...others, ...records];
     });
-  }, [pushCloud]);
+
+    const teacherNames = [...involvedTeacherIds]
+      .map(tid => teachersRef.current.find(t => t.id === tid)?.name)
+      .filter(Boolean)
+      .join('、') || '（未识别老师）';
+    const filled = records.filter(r => r.hearingX != null || r.retell).length;
+    log('save', 'monthlyRecord', `${yearMonth} 第${week}周 · ${teacherNames}`,
+      `写入 ${records.length} 条（有数据 ${filled} 条）${removed > 0 ? `，清理 ${removed} 条` : ''}`,
+      Promise.all(writes).then(a => a.every(Boolean)));
+  }, [pushCloud, log]);
 
   // ===== D级兼职老师出勤记录 =====
   const savePartTimeRecords = useCallback((yearMonth: string, week: number, records: PartTimeWeeklyRecord[]) => {
@@ -436,17 +551,28 @@ export function useStore() {
       r.yearMonth === yearMonth && r.week === week && teacherIds.has(r.teacherId)
     );
     const newIds = new Set(records.map(r => r.id));
+    const writes: Promise<boolean>[] = [];
+    let removed = 0;
     for (const old of oldForWeek) {
-      if (!newIds.has(old.id)) pushCloud(cloudSync.deletePartTimeRecord(old.id));
+      if (!newIds.has(old.id)) { removed++; const dp = cloudSync.deletePartTimeRecord(old.id); pushCloud(dp); writes.push(dp); }
     }
     for (const rec of records) {
-      pushCloud(cloudSync.upsertPartTimeRecord(rec));
+      const up = cloudSync.upsertPartTimeRecord(rec); pushCloud(up); writes.push(up);
     }
     setPartTimeRecords(prev => {
       const others = prev.filter(r => !(r.yearMonth === yearMonth && r.week === week && teacherIds.has(r.teacherId)));
       return [...others, ...records];
     });
-  }, [pushCloud]);
+
+    const teacherNames = [...teacherIds]
+      .map(tid => teachersRef.current.find(t => t.id === tid)?.name)
+      .filter(Boolean)
+      .join('、') || '（未识别老师）';
+    const attended = records.filter(r => r.attended).length;
+    log('save', 'partTimeRecord', `${yearMonth} 第${week}周 · ${teacherNames}`,
+      `出勤记录 ${records.length} 条（上课 ${attended} 条）${removed > 0 ? `，清理 ${removed} 条` : ''}`,
+      Promise.all(writes).then(a => a.every(Boolean)));
+  }, [pushCloud, log]);
 
   return {
     teachers, classes, students, campuses, accounts, currentUser, salaryStandard, monthlyRecords, partTimeRecords,

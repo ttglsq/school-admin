@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { APP_VERSION } from '@/version';
-import { GraduationCap, Users, School, LayoutDashboard, LogOut, Menu, Building2, KeyRound, UserCog, Coins, Calculator, ClipboardList } from 'lucide-react';
+import { GraduationCap, Users, School, LayoutDashboard, LogOut, Menu, Building2, KeyRound, UserCog, Coins, Calculator, ClipboardList, ScrollText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
 import { Card, CardContent } from '@/components/ui/card';
@@ -13,11 +13,12 @@ import AccountManagement from './AccountManagement';
 import SalaryStandardPage from './SalaryStandardPage';
 import PerformanceEntryPage from './PerformanceEntryPage';
 import PerformancePage from './PerformancePage';
+import OperationLogPage from './OperationLogPage';
 import AccountSettingsDialog from './AccountSettingsDialog';
 import type { Teacher, ClassInfo, Student, Campus, Account, PermissionId, SalaryStandardData, SalaryCoefficientKey, SalaryStandardRow, StudentMonthlyRecord, PartTimeWeeklyRecord } from '@/types';
 import { TEACHER_LEVELS, CLASS_LEVELS, ROLE_LABELS } from '@/types';
 
-export type PageId = 'overview' | 'campuses' | 'teachers' | 'classes' | 'students' | 'accounts' | 'salary' | 'entry' | 'performance';
+export type PageId = 'overview' | 'campuses' | 'teachers' | 'classes' | 'students' | 'accounts' | 'salary' | 'entry' | 'performance' | 'logs';
 
 interface DashboardProps {
   teachers: Teacher[];
@@ -83,6 +84,7 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { id: 'entry', label: '数据录入', icon: ClipboardList },
   { id: 'performance', label: '绩效展示', icon: Calculator },
   { id: 'accounts', label: '账号管理', icon: UserCog },
+  { id: 'logs', label: '操作日志', icon: ScrollText },
 ];
 
 export default function Dashboard(props: DashboardProps) {
@@ -94,7 +96,7 @@ export default function Dashboard(props: DashboardProps) {
 
   // 判断是否有某个板块的访问权限
   const canAccess = (page: PageId): boolean => {
-    if (page === 'accounts') return isAdmin;
+    if (page === 'accounts' || page === 'logs') return isAdmin;
     if (isAdmin) return true;
     return props.currentUser.permissions.includes(page as PermissionId);
   };
@@ -291,6 +293,8 @@ export default function Dashboard(props: DashboardProps) {
             partTimeRecords={props.partTimeRecords}
           />
         );
+      case 'logs':
+        return <OperationLogPage />;
       default:
         return null;
     }

@@ -5,9 +5,35 @@ import { useStore } from '@/hooks/useStore';
 import LoginPage from '@/components/LoginPage';
 import Dashboard from '@/components/Dashboard';
 import { APP_VERSION } from '@/version';
+import { appendLocalLog } from '@/lib/opLog';
 
 export default function App() {
   const store = useStore();
+
+  // 全局异常捕获 → 写进操作日志，方便事后排查
+  useEffect(() => {
+    const onError = (e: ErrorEvent) => {
+      appendLocalLog({
+        actor: '系统', action: 'error', entity: 'system',
+        target: '页面脚本异常',
+        detail: `${e.message} @ ${String(e.filename).split('/').pop()}:${e.lineno}`,
+      });
+    };
+    const onRejection = (e: PromiseRejectionEvent) => {
+      const r = e.reason as { message?: string } | undefined;
+      appendLocalLog({
+        actor: '系统', action: 'error', entity: 'system',
+        target: '未处理的异步异常',
+        detail: String(r?.message ?? r).slice(0, 300),
+      });
+    };
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onRejection);
+    };
+  }, []);
 
   // 自动版本检测：线上有新版本发布时，自动刷新，避免设备长时间停留在旧版本
   useEffect(() => {
